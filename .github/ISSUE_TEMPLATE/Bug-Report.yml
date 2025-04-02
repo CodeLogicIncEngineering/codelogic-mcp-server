@@ -1,0 +1,99 @@
+name: Bug Report
+description: File a bug report
+title: "[Bug]: "
+labels: ["bug"]
+assignees:
+  - garrmark
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Tell us what happened...
+    validations:
+      required: true
+      
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps To Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. API endpoint accessed (e.g., '/v1/generate')
+        2. Request payload used (please include relevant JSON)
+        3. Client configuration (e.g., authentication method, headers)
+        4. Model configuration parameters (if applicable)
+        5. Observed error or unexpected behavior
+    validations:
+      required: true
+      
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+      
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: If applicable, add screenshots to help explain your problem.
+      
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other (specify in additional context)
+    validations:
+      required: true
+      
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version
+      placeholder: e.g., 3.9.10
+    validations:
+      required: true
+      
+  - type: input
+    id: package-version
+    attributes:
+      label: Package Version
+      placeholder: e.g., 1.0.0
+    validations:
+      required: true
+      
+  - type: input
+    id: client-implementation
+    attributes:
+      label: Client Implementation
+      description: How are you accessing the service?
+      placeholder: e.g., Python SDK, curl, etc.
+    validations:
+      required: true
+      
+  - type: input
+    id: models
+    attributes:
+      label: Model(s) Used
+      placeholder: e.g., specific model versions being used
+    validations:
+      required: true
+      
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here.
