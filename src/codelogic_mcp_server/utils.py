@@ -361,3 +361,425 @@ def authenticate():
     except Exception as e:
         sys.stderr.write(f"Authentication error: {e}\n")
         raise
+
+
+async def search_database_entity(entity_type, name, table_or_view=None):
+    """
+    Search for database entities using the CodeLogic API.
+
+    Args:
+        entity_type (str): Type of database entity (table, view, or column)
+        name (str): Name of the database entity
+        table_or_view (str, optional): Name of the table or view containing the column
+            (required when entity_type is 'column')
+
+    Returns:
+        list: List of matching database entities
+    """
+    try:
+        token = authenticate()
+        url = f"{os.getenv('CODELOGIC_SERVER_HOST')}/codelogic/server/ai-retrieval/search/{entity_type}"
+
+        # Get materialized view ID (required parameter)
+        mv_id = get_mv_id(os.getenv("CODELOGIC_MV_NAME"))
+
+        # Create query parameters
+        params = {
+            "materializedViewId": mv_id
+        }
+
+        # Add the appropriate parameter name based on entity type
+        if entity_type == "table":
+            params["tableName"] = name
+        elif entity_type == "column":
+            params["columnName"] = name
+            if table_or_view:
+                params["tableOrViewName"] = table_or_view
+        elif entity_type == "view":
+            params["viewName"] = name
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        }
+
+        # Debug output
+        sys.stderr.write(f"Calling {url} with params {params}\n")
+
+        # Use POST as specified in the API
+        response = _client.post(url, headers=headers, params=params, json={})
+        response.raise_for_status()
+        return response.json().get("data", [])
+    except httpx.HTTPStatusError as e:
+        sys.stderr.write(f"HTTP error {e.response.status_code} from API: {e}\n")
+        sys.stderr.write(f"Response content: {e.response.text}\n")
+        return []
+    except Exception as e:
+        sys.stderr.write(f"Error searching for {entity_type} '{name}': {str(e)}\n")
+        return []  # Return empty list instead of propagating the error
+
+
+def process_database_entity_impact(impact_data, entity_type, entity_name, entity_schema):
+    """
+    Process impact analysis data for a database entity.
+
+    Args:
+        impact_data: The impact analysis data from the API
+        entity_type: The type of database entity (table, column, view)
+        entity_name: The name of the entity
+        entity_schema: The schema of the entity (may be "Unknown")
+
+    Returns:
+        Dict containing processed impact data
+    """
+    nodes = extract_nodes(impact_data)
+    relationships = extract_relationships(impact_data)
+
+    # Find the target entity node
+    target_node = next((n for n in nodes if n['name'] == entity_name and n['primaryLabel'] == entity_type_to_label(entity_type)), None)
+    if not target_node:
+        return {
+            "entity_type": entity_type,
+            "name": entity_name,
+            "schema": entity_schema,
+            "dependent_code": [],
+            "referencing_tables": [],
+            "dependent_applications": [],
+            "nodes": nodes,
+            "relationships": relationships
+        }
+
+    # Get the actual schema name if available
+    entity_schema = extract_schema_name(target_node, nodes) or entity_schema
+
+    # Get the parent table for columns
+    parent_table = None
+    if entity_type == "column":
+        parent_table = find_parent_table(target_node['id'], impact_data)
+
+    # Find code dependencies
+    direct_dependent_code = find_direct_dependent_code(target_node['id'], impact_data)
+
+    # For columns, also include code that references the containing table
+    table_dependent_code = []
+    if entity_type == "column" and parent_table:
+        table_dependent_code = find_direct_dependent_code(parent_table['id'], impact_data)
+        # Mark these as indirect references
+        for item in table_dependent_code:
+            item["relationship_type"] = "indirect (via table)"
+
+    # Combine direct and table dependencies, avoiding duplicates
+    dependent_code = direct_dependent_code
+    seen_ids = {item["id"] for item in dependent_code}
+    for item in table_dependent_code:
+        if item["id"] not in seen_ids:
+            dependent_code.append(item)
+            seen_ids.add(item["id"])
+
+    # Find related database objects
+    referencing_tables = find_referencing_database_objects(target_node['id'], impact_data)
+
+    # Determine affected applications
+    dependent_applications = extract_dependent_applications(dependent_code, impact_data)
+
+    # Also include applications that directly group the database objects
+    db_applications = find_database_applications(target_node['id'], impact_data)
+    for app in db_applications:
+        if app not in dependent_applications:
+            dependent_applications.append(app)
+
+    return {
+        "entity_type": entity_type,
+        "name": entity_name,
+        "schema": entity_schema,
+        "dependent_code": dependent_code,
+        "referencing_tables": referencing_tables,
+        "dependent_applications": dependent_applications,
+        "parent_table": parent_table,
+        "nodes": nodes,
+        "relationships": relationships
+    }
+
+
+def entity_type_to_label(entity_type):
+    """Convert entity_type parameter to node primaryLabel"""
+    mapping = {
+        "column": "Column",
+        "table": "Table",
+        "view": "View"
+    }
+    return mapping.get(entity_type, entity_type.capitalize())
+
+
+def extract_schema_name(node, nodes):
+    """Extract the schema name from a database entity node"""
+    identity_parts = node.get('identity', '').split('|')
+    if len(identity_parts) >= 2:
+        schema_name = identity_parts[1]
+        # Verify it's a schema by finding it in the nodes
+        schema_node = next((n for n in nodes if n['name'] == schema_name and n['primaryLabel'] == 'Schema'), None)
+        if schema_node:
+            return schema_name
+    return None
+
+
+def find_parent_table(column_id, impact_data):
+    """Find the table that contains a column"""
+    for rel in impact_data.get('data', {}).get('relationships', []):
+        if rel.get('type') == 'CONTAINS_COLUMN' and rel.get('endId') == column_id:
+            table_id = rel.get('startId')
+            table_node = find_node_by_id(impact_data.get('data', {}).get('nodes', []), table_id)
+            if table_node and table_node.get('primaryLabel') == 'Table':
+                return table_node
+    return None
+
+
+def find_direct_dependent_code(node_id, impact_data):
+    """Find code that directly depends on the given database entity"""
+    dependent_code = []
+    for rel in impact_data.get('data', {}).get('relationships', []):
+        # Check for code that references our target
+        if rel.get('endId') == node_id and rel.get('type') in ['REFERENCES', 'USES', 'SELECTS', 'UPDATES', 'INSERTS', 'DELETES', 'REFERENCES_TABLE']:
+            source_node = find_node_by_id(impact_data.get('data', {}).get('nodes', []), rel.get('startId'))
+            if source_node and source_node.get('primaryLabel', '').endswith(('MethodEntity', 'ClassEntity')):
+                dependent_code.append({
+                    "id": source_node.get('id'),
+                    "name": source_node.get('name'),
+                    "type": source_node.get('primaryLabel'),
+                    "relationship": rel.get('type'),
+                    "relationship_type": "direct",
+                    "complexity": source_node.get('properties', {}).get('statistics.cyclomaticComplexity', 'N/A')
+                })
+    return dependent_code
+
+
+def find_referencing_database_objects(node_id, impact_data):
+    """Find database objects that reference the given entity"""
+    referencing_objects = []
+    for rel in impact_data.get('data', {}).get('relationships', []):
+        if rel.get('endId') == node_id and rel.get('type') in ['REFERENCES', 'FOREIGN_KEY']:
+            source_node = find_node_by_id(impact_data.get('data', {}).get('nodes', []), rel.get('startId'))
+            if source_node and source_node.get('primaryLabel') in ['Table', 'Column', 'View']:
+                schema = extract_schema_name(source_node, impact_data.get('data', {}).get('nodes', [])) or 'Unknown'
+                referencing_objects.append({
+                    "id": source_node.get('id'),
+                    "name": source_node.get('name'),
+                    "type": source_node.get('primaryLabel'),
+                    "schema": schema
+                })
+    return referencing_objects
+
+
+def extract_dependent_applications(dependent_code, impact_data):
+    """Extract application names that contain the dependent code"""
+    applications = []
+
+    # Build a map of node IDs to their containing applications
+    node_to_app = {}
+    app_nodes = {}
+
+    # Find all Application nodes
+    for node in impact_data.get('data', {}).get('nodes', []):
+        if node.get('primaryLabel') == 'Application':
+            app_nodes[node.get('id')] = node.get('name')
+
+    # Map nodes to applications via GROUPS relationships
+    for rel in impact_data.get('data', {}).get('relationships', []):
+        if rel.get('type') == 'GROUPS' and rel.get('startId') in app_nodes:
+            node_to_app[rel.get('endId')] = app_nodes[rel.get('startId')]
+
+    # Find applications for each code element
+    for code in dependent_code:
+        code_id = code.get('id')
+        if code_id in node_to_app:
+            app_name = node_to_app[code_id]
+            if app_name not in applications:
+                applications.append(app_name)
+
+        # Also check for containing elements that might be mapped to applications
+        # (e.g., if a method belongs to a class that is grouped by an application)
+        for rel in impact_data.get('data', {}).get('relationships', []):
+            if rel.get('endId') == code_id and rel.get('type').startswith('CONTAINS_'):
+                parent_id = rel.get('startId')
+                if parent_id in node_to_app:
+                    app_name = node_to_app[parent_id]
+                    if app_name not in applications:
+                        applications.append(app_name)
+
+    return applications
+
+
+def find_database_applications(node_id, impact_data):
+    """
+    Find applications that directly or indirectly group the database entity.
+    
+    This function traverses both direct grouping relationships and indirect
+    relationships through containment chains to identify all applications
+    that might be affected by changes to the database entity.
+    
+    Args:
+        node_id (str): ID of the database entity node
+        impact_data (dict): Impact analysis data from the API
+        
+    Returns:
+        list: Names of applications that group this database entity
+    """
+    applications = []
+    processed_nodes = set()  # Track processed nodes to avoid infinite recursion
+    
+    # Find all application nodes and create lookup map
+    app_nodes = {}
+    for node in impact_data.get('data', {}).get('nodes', []):
+        if node.get('primaryLabel') == 'Application':
+            app_nodes[node.get('id')] = node.get('name')
+    
+    # Recursive function to traverse containment and grouping relationships
+    def traverse_relationships(current_id):
+        if current_id in processed_nodes:
+            return  # Avoid cycles
+        
+        processed_nodes.add(current_id)
+        
+        # Check direct grouping by applications
+        for rel in impact_data.get('data', {}).get('relationships', []):
+            # If an application directly groups this node
+            if rel.get('type') == 'GROUPS' and rel.get('endId') == current_id and rel.get('startId') in app_nodes:
+                app_name = app_nodes[rel.get('startId')]
+                if app_name not in applications:
+                    applications.append(app_name)
+            
+            # Check relationships that refer to or contain this node
+            # These can lead us to components that might be grouped by applications
+            if rel.get('endId') == current_id:
+                # Follow containment and reference relationships up the chain
+                if rel.get('type').startswith('CONTAINS_') or rel.get('type') in ['REFERENCES', 'REFERENCES_TABLE']:
+                    # Recursively check the parent node
+                    traverse_relationships(rel.get('startId'))
+    
+    # Start traversal from the target node
+    traverse_relationships(node_id)
+    
+    # Additional check for database-specific structures
+    # Some applications might group the database or schema containing our entity
+    current_node = find_node_by_id(impact_data.get('data', {}).get('nodes', []), node_id)
+    if current_node and current_node.get('primaryLabel') in ['Table', 'Column', 'View']:
+        # Try to find the database node
+        for rel in impact_data.get('data', {}).get('relationships', []):
+            if rel.get('type').startswith('CONTAINS_') and rel.get('endId') == node_id:
+                # This might be a schema containing our table or a table containing our column
+                container_id = rel.get('startId')
+                container_node = find_node_by_id(impact_data.get('data', {}).get('nodes', []), container_id)
+                
+                if container_node and container_node.get('primaryLabel') in ['Table', 'Schema', 'Database']:
+                    # Recursively process this container to find applications
+                    traverse_relationships(container_id)
+    
+    return applications
+
+
+def generate_combined_database_report(entity_type, search_name, table_or_view, search_results, all_impacts):
+    """
+    Generate a combined report for all database entities.
+    """
+    table_view_text = f" in {table_or_view}" if table_or_view else ""
+    report = f"# Database Impact Analysis: {entity_type.capitalize()}s matching '{search_name}'{table_view_text}\n\n"
+    report += f"## Overview\nFound {len(search_results)} {entity_type}(s) matching your search criteria.\n\n"
+    if not all_impacts:
+        report += "No impact analysis data could be retrieved for these entities.\n"
+        return report
+
+    # Collect all applications across all impacts
+    all_apps = set()
+    for impact in all_impacts:
+        all_apps.update(impact.get("dependent_applications", []))
+
+    report += "## Application Impact\n"
+    if all_apps:
+        report += f"Changes to these database objects could affect {len(all_apps)} applications:\n\n"
+        for app in sorted(all_apps):
+            report += f"- `{app}`\n"
+    else:
+        report += "No applications appear to directly depend on these database objects.\n"
+
+    report += "\n## Detailed Analysis\n\n"
+    for i, impact in enumerate(all_impacts):
+        entity_name = impact.get("name", "Unknown")
+        entity_schema = impact.get("schema", "Unknown")
+        
+        # Format the entity identifier differently based on entity type
+        if entity_type == "column":
+            parent_table = impact.get("parent_table", {})
+            table_name = parent_table.get("name", "Unknown") if parent_table else "Unknown"
+            entity_id = f"`{entity_schema}.{table_name}.{entity_name}`"
+        else:
+            entity_id = f"`{entity_schema}.{entity_name}`"
+            
+        report += f"### {i + 1}. {entity_type.capitalize()}: {entity_id}\n\n"
+
+        # For columns, show the parent table information
+        parent_table = impact.get("parent_table")
+        if parent_table and entity_type == "column":
+            parent_table_name = parent_table.get("name", "Unknown")
+            report += f"This column is part of the `{parent_table_name}` table.\n\n"
+
+        # Show code dependencies
+        dependent_code = impact.get("dependent_code", [])
+        report += "#### Code Dependencies\n"
+        if dependent_code:
+            report += f"This database object is referenced by {len(dependent_code)} code elements:\n\n"
+            report += "| Code Element | Type | Relationship | Reference Type | Complexity |\n|-------------|------|-------------|---------------|------------|\n"
+            for code in dependent_code[:10]:
+                reference_type = code.get("relationship_type", "direct")
+                complexity = code.get("complexity", "N/A")
+                report += f"| `{code['name']}` | {code['type']} | {code['relationship']} | {reference_type} | {complexity} |\n"
+            if len(dependent_code) > 10:
+                report += f"\n*...and {len(dependent_code) - 10} more*\n"
+        else:
+            report += "No code elements directly reference this database object.\n"
+
+        # Show related database objects
+        referencing_tables = impact.get("referencing_tables", [])
+        if referencing_tables:
+            report += "\n#### Related Database Objects\n"
+            report += f"This database object is referenced by {len(referencing_tables)} other database objects:\n\n"
+            report += "| Database Object | Type | Schema |\n|----------------|------|--------|\n"
+            for table in referencing_tables[:10]:
+                report += f"| `{table['name']}` | {table['type']} | {table['schema']} |\n"
+            if len(referencing_tables) > 10:
+                report += f"\n*...and {len(referencing_tables) - 10} more*\n"
+
+        # Risk assessment
+        report += "\n#### Risk Assessment\n"
+        total_deps = len(dependent_code) + len(referencing_tables)
+        if total_deps > 20:
+            report += "⚠️ **High Risk**: This database object has numerous dependencies. Changes require careful planning and thorough testing.\n"
+        elif total_deps > 5:
+            report += "⚠️ **Medium Risk**: This database object has multiple dependencies. Changes should be tested across affected systems.\n"
+        else:
+            report += "✅ **Low Risk**: This database object has few dependencies. Changes are likely isolated.\n"
+
+        # Cross-application impact warning
+        if len(impact.get("dependent_applications", [])) > 1:
+            report += "\n⚠️ **Cross-Application Impact**: Changes to this database object affect multiple applications.\n"
+        report += "\n"
+
+    # Add best practices section
+    report += """
+## Best Practices for Database Changes
+
+### Guidelines for AI
+- Suggest schema migration scripts when modifying database objects
+- Consider backward compatibility when tables are used across multiple applications
+- Recommend creating database views for frequently changed schemas
+- Suggest unit and integration tests for any code that depends on changed database objects
+- Recommend incremental migration approaches for high-risk changes
+
+### Risk Mitigation Strategies
+1. Create and test migration scripts thoroughly
+2. Deploy database changes before code changes that depend on them
+3. Consider implementing feature flags for risky changes
+4. Plan for rollback procedures
+5. Test all affected applications after changes
+"""
+    return report
