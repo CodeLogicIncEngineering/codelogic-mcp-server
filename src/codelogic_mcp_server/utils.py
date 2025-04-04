@@ -613,34 +613,34 @@ def extract_dependent_applications(dependent_code, impact_data):
 def find_database_applications(node_id, impact_data):
     """
     Find applications that directly or indirectly group the database entity.
-    
+
     This function traverses both direct grouping relationships and indirect
     relationships through containment chains to identify all applications
     that might be affected by changes to the database entity.
-    
+
     Args:
         node_id (str): ID of the database entity node
         impact_data (dict): Impact analysis data from the API
-        
+
     Returns:
         list: Names of applications that group this database entity
     """
     applications = []
     processed_nodes = set()  # Track processed nodes to avoid infinite recursion
-    
+
     # Find all application nodes and create lookup map
     app_nodes = {}
     for node in impact_data.get('data', {}).get('nodes', []):
         if node.get('primaryLabel') == 'Application':
             app_nodes[node.get('id')] = node.get('name')
-    
+
     # Recursive function to traverse containment and grouping relationships
     def traverse_relationships(current_id):
         if current_id in processed_nodes:
             return  # Avoid cycles
-        
+
         processed_nodes.add(current_id)
-        
+
         # Check direct grouping by applications
         for rel in impact_data.get('data', {}).get('relationships', []):
             # If an application directly groups this node
@@ -648,7 +648,7 @@ def find_database_applications(node_id, impact_data):
                 app_name = app_nodes[rel.get('startId')]
                 if app_name not in applications:
                     applications.append(app_name)
-            
+
             # Check relationships that refer to or contain this node
             # These can lead us to components that might be grouped by applications
             if rel.get('endId') == current_id:
@@ -656,10 +656,10 @@ def find_database_applications(node_id, impact_data):
                 if rel.get('type').startswith('CONTAINS_') or rel.get('type') in ['REFERENCES', 'REFERENCES_TABLE']:
                     # Recursively check the parent node
                     traverse_relationships(rel.get('startId'))
-    
+
     # Start traversal from the target node
     traverse_relationships(node_id)
-    
+
     # Additional check for database-specific structures
     # Some applications might group the database or schema containing our entity
     current_node = find_node_by_id(impact_data.get('data', {}).get('nodes', []), node_id)
@@ -670,11 +670,11 @@ def find_database_applications(node_id, impact_data):
                 # This might be a schema containing our table or a table containing our column
                 container_id = rel.get('startId')
                 container_node = find_node_by_id(impact_data.get('data', {}).get('nodes', []), container_id)
-                
+
                 if container_node and container_node.get('primaryLabel') in ['Table', 'Schema', 'Database']:
                     # Recursively process this container to find applications
                     traverse_relationships(container_id)
-    
+
     return applications
 
 
@@ -706,7 +706,7 @@ def generate_combined_database_report(entity_type, search_name, table_or_view, s
     for i, impact in enumerate(all_impacts):
         entity_name = impact.get("name", "Unknown")
         entity_schema = impact.get("schema", "Unknown")
-        
+
         # Format the entity identifier differently based on entity type
         if entity_type == "column":
             parent_table = impact.get("parent_table", {})
@@ -714,7 +714,7 @@ def generate_combined_database_report(entity_type, search_name, table_or_view, s
             entity_id = f"`{entity_schema}.{table_name}.{entity_name}`"
         else:
             entity_id = f"`{entity_schema}.{entity_name}`"
-            
+
         report += f"### {i + 1}. {entity_type.capitalize()}: {entity_id}\n\n"
 
         # For columns, show the parent table information

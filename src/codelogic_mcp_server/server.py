@@ -56,9 +56,9 @@ async def main():
                         notification_options=NotificationOptions(),
                         experimental_capabilities={},
                     ),
-                    instructions=("When asked to modify an existing code method, invoke one or both of get-impact and database-impact mcp tools against "
-                                  "the code provided and any methods that you are proposing changes to.  Make sure the results sent back from the tool are "
-                                  "highlighted as impacts for the given method."
+                    instructions=("When asked to modify an existing code method, invoke one or both of codelogic-method-impact and codelogic-database-impact "
+                                  "mcp tools against the code provided and any methods that you are proposing changes to.  Make sure the results sent back "
+                                  "from the tool are highlighted as impacts for the given method."
                                   ),
                 ),
             )

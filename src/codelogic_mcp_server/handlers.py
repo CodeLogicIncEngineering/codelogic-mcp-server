@@ -21,6 +21,8 @@ from .utils import extract_nodes, extract_relationships, get_mv_id, get_method_n
 import time
 from datetime import datetime
 
+DEBUG_MODE = os.getenv("CODELOGIC_DEBUG_MODE", "false").lower() == "true"
+
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
@@ -30,7 +32,7 @@ async def handle_list_tools() -> list[types.Tool]:
     """
     return [
         types.Tool(
-            name="get-impact",
+            name="codelogic-method-impact",
             description="Analyze impacts of modifying a specific method within a given class or type.\n"
                         "Recommended workflow:\n"
                         "1. Use this tool before implementing code changes\n"
@@ -47,7 +49,7 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="database-impact",
+            name="codelogic-database-impact",
             description="Analyze impacts between code and database entities.\n"
                         "Recommended workflow:\n"
                         "1. Use this tool before implementing code or database changes\n"
@@ -80,9 +82,9 @@ async def handle_call_tool(
     Tools can modify server state and notify clients of changes.
     """
     try:
-        if name == "get-impact":
+        if name == "codelogic-method-impact":
             return await handle_method_impact(arguments)
-        elif name == "database-impact":
+        elif name == "codelogic-database-impact":
             return await handle_database_impact(arguments)
         else:
             sys.stderr.write(f"Unknown tool: {name}\n")
@@ -127,8 +129,9 @@ async def handle_method_impact(arguments: dict | None) -> list[types.TextContent
     end_time = time.time()
     duration = end_time - start_time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open("timing_log.txt", "a") as log_file:
-        log_file.write(f"{timestamp} - get_method_nodes for method '{method_name}' in class '{class_name}' took {duration:.4f} seconds\n")
+    if DEBUG_MODE:
+        with open("timing_log.txt", "a") as log_file:
+            log_file.write(f"{timestamp} - get_method_nodes for method '{method_name}' in class '{class_name}' took {duration:.4f} seconds\n")
 
     # Check if nodes is empty due to timeout or server error
     if not nodes:
@@ -167,10 +170,11 @@ The request to retrieve method information from the CodeLogic server timed out o
     end_time = time.time()
     duration = end_time - start_time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open("timing_log.txt", "a") as log_file:
-        log_file.write(f"{timestamp} - get_impact for node '{node['name']}' took {duration:.4f} seconds\n")
-    with open("impact_data.json", "w") as impact_file:
-        json.dump(impact, impact_file, indent=4)
+    if DEBUG_MODE:
+        with open("timing_log.txt", "a") as log_file:
+            log_file.write(f"{timestamp} - get_impact for node '{node['name']}' took {duration:.4f} seconds\n")
+        with open("impact_data.json", "w") as impact_file:
+            json.dump(impact, impact_file, indent=4)
     impact_data = json.loads(impact)
     nodes = extract_nodes(impact_data)
     relationships = extract_relationships(impact_data)
@@ -527,9 +531,9 @@ async def handle_database_impact(arguments: dict | None) -> list[types.TextConte
     end_time = time.time()
     duration = end_time - start_time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    with open("timing_log.txt", "a") as log_file:
-        log_file.write(f"{timestamp} - search_database_entity for {entity_type} '{name}' took {duration:.4f} seconds\n")
+    if DEBUG_MODE:
+        with open("timing_log.txt", "a") as log_file:
+            log_file.write(f"{timestamp} - search_database_entity for {entity_type} '{name}' took {duration:.4f} seconds\n")
 
     if not search_results:
         table_view_text = f" in {table_or_view}" if table_or_view else ""
@@ -555,11 +559,11 @@ async def handle_database_impact(arguments: dict | None) -> list[types.TextConte
             duration = end_time - start_time
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            with open("timing_log.txt", "a") as log_file:
-                log_file.write(f"{timestamp} - get_impact for {entity_type} '{entity_name}' took {duration:.4f} seconds\n")
-
-            with open(f"impact_data_{entity_type}_{entity_name}.json", "w") as impact_file:
-                json.dump(json.loads(impact), impact_file, indent=4)
+            if DEBUG_MODE:
+                with open("timing_log.txt", "a") as log_file:
+                    log_file.write(f"{timestamp} - get_impact for {entity_type} '{entity_name}' took {duration:.4f} seconds\n")
+                with open(f"impact_data_{entity_type}_{entity_name}.json", "w") as impact_file:
+                    json.dump(json.loads(impact), impact_file, indent=4)
             impact_data = json.loads(impact)
             impact_summary = process_database_entity_impact(
                 impact_data, entity_type, entity_name, entity_schema
