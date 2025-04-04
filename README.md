@@ -6,10 +6,12 @@ An [MCP Server](https://modelcontextprotocol.io/introduction) to utilize Codelog
 
 ### Tools
 
-The server implements one tool:
+The server implements two tools:
 
-- get-impact: Pulls an impact assessment from the codelogic server's API's for your code
-  - Takes the given "method" that you're working on and it's associated "class"
+- **codelogic-method-impact**: Pulls an impact assessment from the CodeLogic server's APIs for your code.
+  - Takes the given "method" that you're working on and its associated "class".
+- **codelogic-database-impact**: Analyzes impacts between code and database entities.
+  - Takes the database entity type (column, table, or view) and its name.
 
 ### Install
 
@@ -67,15 +69,37 @@ Add the following configuration to your file:
 }
 ```
 
-Add a **global rule** to help windsurf call the tool, create or modify the `~/.codeium/windsurf/memories/global_rules.md` markdown file.
+Add a **global rule** to help Windsurf call the tools, create or modify the `~/.codeium/windsurf/memories/global_rules.md` markdown file.
 
 Add the following or something similar:
 
 ```markdown
-When I ask you to modify existing code, try running the get-impact mcp tool against the code I've provided and any methods or functions that you are changing.  Make sure the results sent back from the tool are highlighted as impacts for the given method or function.
+When I ask you to modify existing code, try running the codelogic-method-impact and codelogic-database-impact MCP tools against the code I've provided and any methods or functions that you are changing. Make sure the results sent back from the tool are highlighted as impacts for the given method or function.
 ```
 
 After adding the configuration, restart Windsurf IDE or refresh the tools to apply the changes.
+
+### Environment Variables
+
+The following environment variables can be configured to customize the behavior of the server:
+
+- `CODELOGIC_SERVER_HOST`: The URL of the CodeLogic server.
+- `CODELOGIC_USERNAME`: Your CodeLogic username.
+- `CODELOGIC_PASSWORD`: Your CodeLogic password.
+- `CODELOGIC_MV_NAME`: The name of the materialized view to use.
+- `CODELOGIC_DEBUG_MODE`: Set to `true` to enable debug mode. When enabled, additional debug files such as `timing_log.txt` and `impact_data*.json` will be generated. Defaults to `false`.
+
+#### Example Configuration
+
+```json
+"env": {
+  "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
+  "CODELOGIC_USERNAME": "<my username>",
+  "CODELOGIC_PASSWORD": "<my password>",
+  "CODELOGIC_MV_NAME": "<my materialized view>",
+  "CODELOGIC_DEBUG_MODE": "true"
+}
+```
 
 #### Pinning the version
 
