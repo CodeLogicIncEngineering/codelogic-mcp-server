@@ -9,9 +9,10 @@ wheels/
 # Virtual environments
 .venv
 .env
-timing_log.txt
 /.idea/
 .aider*
-impact_analysis_result_*.md
-impact_data*.json
+
 test/.env.test
+
+# Logs folder
+logs/

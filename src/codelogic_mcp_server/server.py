@@ -38,6 +38,12 @@ async def main():
         Exception: Any errors that occur during server execution are logged and re-raised
     """
     try:
+        # Import handlers module to register the decorators with our server instance
+        # This import is necessary for the server to discover handlers through decorators,
+        # even though we don't directly use the module in this file
+        # noqa: F401 tells linters to ignore the unused import
+        from . import handlers  # noqa: F401
+
         # Run the server using stdin/stdout streams
         async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
             await server.run(
@@ -50,7 +56,10 @@ async def main():
                         notification_options=NotificationOptions(),
                         experimental_capabilities={},
                     ),
-                    instructions="When asked to modify an existing code method, invoke the get-impact mcp tool against the code provided and any methods that you are proposing changes to.  Make sure the results sent back from the tool are highlighted as impacts for the given method.",
+                    instructions=("When asked to modify an existing code method, invoke one or both of codelogic-method-impact and codelogic-database-impact "
+                                  "mcp tools against the code provided and any methods that you are proposing changes to.  Make sure the results sent back "
+                                  "from the tool are highlighted as impacts for the given method."
+                                  ),
                 ),
             )
     except Exception as e:

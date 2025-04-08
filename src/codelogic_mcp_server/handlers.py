@@ -17,9 +17,20 @@ import os
 import sys
 from .server import server
 import mcp.types as types
-from .utils import extract_nodes, extract_relationships, get_mv_id, get_method_nodes, get_impact, find_node_by_id
+from .utils import extract_nodes, extract_relationships, get_mv_id, get_method_nodes, get_impact, find_node_by_id, search_database_entity, process_database_entity_impact, generate_combined_database_report
 import time
 from datetime import datetime
+
+DEBUG_MODE = os.getenv("CODELOGIC_DEBUG_MODE", "false").lower() == "true"
+
+LOGS_DIR = "logs"
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+
+def write_json_to_file(file_path, data):
+    """Write JSON data to a file with improved formatting."""
+    with open(file_path, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4, separators=(", ", ": "), ensure_ascii=False, sort_keys=True)
 
 
 @server.list_tools()
@@ -30,7 +41,7 @@ async def handle_list_tools() -> list[types.Tool]:
     """
     return [
         types.Tool(
-            name="get-impact",
+            name="codelogic-method-impact",
             description="Analyze impacts of modifying a specific method within a given class or type.\n"
                         "Recommended workflow:\n"
                         "1. Use this tool before implementing code changes\n"
@@ -45,6 +56,28 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["method", "class"],
             },
+        ),
+        types.Tool(
+            name="codelogic-database-impact",
+            description="Analyze impacts between code and database entities.\n"
+                        "Recommended workflow:\n"
+                        "1. Use this tool before implementing code or database changes\n"
+                        "2. Search for the relevant database entity\n"
+                        "3. Review the impact analysis to understand which code depends on this database object and vice versa\n"
+                        "Particularly crucial when AI-suggested modifications are being considered.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entity_type": {
+                        "type": "string",
+                        "description": "Type of database entity to search for (column, table, or view)",
+                        "enum": ["column", "table", "view"]
+                    },
+                    "name": {"type": "string", "description": "Name of the database entity to search for"},
+                    "table_or_view": {"type": "string", "description": "Name of the table or view containing the column (required for columns only)"},
+                },
+                "required": ["entity_type", "name"],
+            },
         )
     ]
 
@@ -57,10 +90,34 @@ async def handle_call_tool(
     Handle tool execution requests.
     Tools can modify server state and notify clients of changes.
     """
-    if name != "get-impact":
-        sys.stderr.write(f"Unknown tool: {name}\n")
-        raise ValueError(f"Unknown tool: {name}")
+    try:
+        if name == "codelogic-method-impact":
+            return await handle_method_impact(arguments)
+        elif name == "codelogic-database-impact":
+            return await handle_database_impact(arguments)
+        else:
+            sys.stderr.write(f"Unknown tool: {name}\n")
+            raise ValueError(f"Unknown tool: {name}")
+    except Exception as e:
+        sys.stderr.write(f"Error handling tool call {name}: {str(e)}\n")
+        error_message = f"""# Error executing tool: {name}
 
+An error occurred while executing this tool:
+```
+{str(e)}
+```
+Please check the server logs for more details.
+"""
+        return [
+            types.TextContent(
+                type="text",
+                text=error_message
+            )
+        ]
+
+
+async def handle_method_impact(arguments: dict | None) -> list[types.TextContent]:
+    """Handle the get-impact tool for method/function analysis"""
     if not arguments:
         sys.stderr.write("Missing arguments\n")
         raise ValueError("Missing arguments")
@@ -81,8 +138,9 @@ async def handle_call_tool(
     end_time = time.time()
     duration = end_time - start_time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open("timing_log.txt", "a") as log_file:
-        log_file.write(f"{timestamp} - get_method_nodes for method '{method_name}' in class '{class_name}' took {duration:.4f} seconds\n")
+    if DEBUG_MODE:
+        with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
+            log_file.write(f"{timestamp} - get_method_nodes for method '{method_name}' in class '{class_name}' took {duration:.4f} seconds\n")
 
     # Check if nodes is empty due to timeout or server error
     if not nodes:
@@ -121,10 +179,11 @@ The request to retrieve method information from the CodeLogic server timed out o
     end_time = time.time()
     duration = end_time - start_time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open("timing_log.txt", "a") as log_file:
-        log_file.write(f"{timestamp} - get_impact for node '{node['name']}' took {duration:.4f} seconds\n")
-    with open("impact_data.json", "w") as impact_file:
-        json.dump(impact, impact_file, indent=4)
+    if DEBUG_MODE:
+        with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
+            log_file.write(f"{timestamp} - get_impact for node '{node['name']}' took {duration:.4f} seconds\n")
+        method_file_name = os.path.join(LOGS_DIR, f"impact_data_method_{class_name}_{method_name}.json") if class_name else os.path.join(LOGS_DIR, f"impact_data_method_{method_name}.json")
+        write_json_to_file(method_file_name, json.loads(impact))
     impact_data = json.loads(impact)
     nodes = extract_nodes(impact_data)
     relationships = extract_relationships(impact_data)
@@ -448,5 +507,87 @@ This analysis focuses on systems that depend on `{method_name}`. Modifying this 
         types.TextContent(
             type="text",
             text=impact_description,
+        )
+    ]
+
+
+async def handle_database_impact(arguments: dict | None) -> list[types.TextContent]:
+    """Handle the database-impact tool for database entity analysis"""
+    if not arguments:
+        sys.stderr.write("Missing arguments\n")
+        raise ValueError("Missing arguments")
+
+    entity_type = arguments.get("entity_type")
+    name = arguments.get("name")
+    table_or_view = arguments.get("table_or_view")
+
+    if not entity_type or not name:
+        sys.stderr.write("Entity type and name must be provided\n")
+        raise ValueError("Entity type and name must be provided")
+
+    if entity_type not in ["column", "table", "view"]:
+        sys.stderr.write(f"Invalid entity type: {entity_type}. Must be column, table, or view.\n")
+        raise ValueError(f"Invalid entity type: {entity_type}")
+
+    # Verify table_or_view is provided for columns
+    if entity_type == "column" and not table_or_view:
+        sys.stderr.write("Table or view name must be provided for column searches\n")
+        raise ValueError("Table or view name must be provided for column searches")
+
+    # Search for the database entity
+    start_time = time.time()
+    search_results = await search_database_entity(entity_type, name, table_or_view)
+    end_time = time.time()
+    duration = end_time - start_time
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if DEBUG_MODE:
+        with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
+            log_file.write(f"{timestamp} - search_database_entity for {entity_type} '{name}' took {duration:.4f} seconds\n")
+
+    if not search_results:
+        table_view_text = f" in {table_or_view}" if table_or_view else ""
+        return [
+            types.TextContent(
+                type="text",
+                text=f"# No {entity_type}s found matching '{name}'{table_view_text}\n\nNo database {entity_type}s were found matching the name '{name}'"
+                     + (f" in {table_or_view}" if table_or_view else "") + "."
+            )
+        ]
+
+    # Process each entity and get its impact
+    all_impacts = []
+    for entity in search_results[:5]:  # Limit to 5 to avoid excessive processing
+        entity_id = entity.get("id")
+        entity_name = entity.get("name")
+        entity_schema = entity.get("schema", "Unknown")
+
+        try:
+            start_time = time.time()
+            impact = get_impact(entity_id)
+            end_time = time.time()
+            duration = end_time - start_time
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            if DEBUG_MODE:
+                with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
+                    log_file.write(f"{timestamp} - get_impact for {entity_type} '{entity_name}' took {duration:.4f} seconds\n")
+                write_json_to_file(os.path.join(LOGS_DIR, f"impact_data_{entity_type}_{entity_name}.json"), json.loads(impact))
+            impact_data = json.loads(impact)
+            impact_summary = process_database_entity_impact(
+                impact_data, entity_type, entity_name, entity_schema
+            )
+            all_impacts.append(impact_summary)
+        except Exception as e:
+            sys.stderr.write(f"Error getting impact for {entity_type} '{entity_name}': {str(e)}\n")
+
+    # Combine all impacts into a single report
+    combined_report = generate_combined_database_report(
+        entity_type, name, table_or_view, search_results, all_impacts
+    )
+
+    return [
+        types.TextContent(
+            type="text",
+            text=combined_report
         )
     ]
