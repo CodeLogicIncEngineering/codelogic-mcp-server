@@ -23,6 +23,15 @@ from datetime import datetime
 
 DEBUG_MODE = os.getenv("CODELOGIC_DEBUG_MODE", "false").lower() == "true"
 
+LOGS_DIR = "logs"
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+
+def write_json_to_file(file_path, data):
+    """Write JSON data to a file with improved formatting."""
+    with open(file_path, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4, separators=(", ", ": "), ensure_ascii=False, sort_keys=True)
+
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
@@ -130,7 +139,7 @@ async def handle_method_impact(arguments: dict | None) -> list[types.TextContent
     duration = end_time - start_time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if DEBUG_MODE:
-        with open("timing_log.txt", "a") as log_file:
+        with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
             log_file.write(f"{timestamp} - get_method_nodes for method '{method_name}' in class '{class_name}' took {duration:.4f} seconds\n")
 
     # Check if nodes is empty due to timeout or server error
@@ -171,10 +180,10 @@ The request to retrieve method information from the CodeLogic server timed out o
     duration = end_time - start_time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if DEBUG_MODE:
-        with open("timing_log.txt", "a") as log_file:
+        with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
             log_file.write(f"{timestamp} - get_impact for node '{node['name']}' took {duration:.4f} seconds\n")
-        with open("impact_data.json", "w") as impact_file:
-            json.dump(impact, impact_file, indent=4)
+        method_file_name = os.path.join(LOGS_DIR, f"impact_data_method_{class_name}_{method_name}.json") if class_name else os.path.join(LOGS_DIR, f"impact_data_method_{method_name}.json")
+        write_json_to_file(method_file_name, json.loads(impact))
     impact_data = json.loads(impact)
     nodes = extract_nodes(impact_data)
     relationships = extract_relationships(impact_data)
@@ -532,7 +541,7 @@ async def handle_database_impact(arguments: dict | None) -> list[types.TextConte
     duration = end_time - start_time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if DEBUG_MODE:
-        with open("timing_log.txt", "a") as log_file:
+        with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
             log_file.write(f"{timestamp} - search_database_entity for {entity_type} '{name}' took {duration:.4f} seconds\n")
 
     if not search_results:
@@ -560,10 +569,9 @@ async def handle_database_impact(arguments: dict | None) -> list[types.TextConte
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if DEBUG_MODE:
-                with open("timing_log.txt", "a") as log_file:
+                with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
                     log_file.write(f"{timestamp} - get_impact for {entity_type} '{entity_name}' took {duration:.4f} seconds\n")
-                with open(f"impact_data_{entity_type}_{entity_name}.json", "w") as impact_file:
-                    json.dump(json.loads(impact), impact_file, indent=4)
+                write_json_to_file(os.path.join(LOGS_DIR, f"impact_data_{entity_type}_{entity_name}.json"), json.loads(impact))
             impact_data = json.loads(impact)
             impact_summary = process_database_entity_impact(
                 impact_data, entity_type, entity_name, entity_schema
