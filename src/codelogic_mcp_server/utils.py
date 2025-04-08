@@ -18,6 +18,7 @@ import httpx
 import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
+import urllib.parse
 
 # Cache TTL settings from environment variables (in seconds)
 TOKEN_CACHE_TTL = int(os.getenv('CODELOGIC_TOKEN_CACHE_TTL', '3600'))  # Default 1 hour
@@ -40,6 +41,9 @@ _client = httpx.Client(
     limits=httpx.Limits(max_keepalive_connections=20, max_connections=30),
     transport=httpx.HTTPTransport(retries=3)
 )
+
+# Encode the workspace name to ensure it is safe for use in API calls
+encoded_workspace_name = urllib.parse.quote(os.getenv("CODELOGIC_MV_NAME"))
 
 
 def find_node_by_id(nodes, id):
@@ -381,7 +385,7 @@ async def search_database_entity(entity_type, name, table_or_view=None):
         url = f"{os.getenv('CODELOGIC_SERVER_HOST')}/codelogic/server/ai-retrieval/search/{entity_type}"
 
         # Get materialized view ID (required parameter)
-        mv_id = get_mv_id(os.getenv("CODELOGIC_MV_NAME"))
+        mv_id = get_mv_id(encoded_workspace_name)
 
         # Create query parameters
         params = {
