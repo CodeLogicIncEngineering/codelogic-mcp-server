@@ -1,0 +1,139 @@
+name: Bump Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Type of version bump (patch, minor, major)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      custom_version:
+        description: 'Custom version (optional, overrides version_type if provided)'
+        required: false
+        type: string
+      release_notes:
+        description: 'Release notes for this version'
+        required: false
+        type: string
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    outputs:
+      new_version: ${{ steps.bump_version.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install toml
+          
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
+      - name: Bump version
+        id: bump_version
+        run: |
+          python -c '
+          import toml
+          import sys
+          import re
+          import os
+          
+          # Read the current version
+          with open("pyproject.toml", "r") as f:
+              config = toml.load(f)
+              
+          current_version = config["project"]["version"]
+          print(f"Current version: {current_version}")
+          
+          # Parse the current version
+          major, minor, patch = map(int, current_version.split("."))
+          
+          # Determine the new version
+          custom_version = "${{ github.event.inputs.custom_version }}"
+          if custom_version:
+              # Validate custom version format
+              if re.match(r"^\d+\.\d+\.\d+$", custom_version):
+                  new_version = custom_version
+              else:
+                  print("Error: Custom version must be in format X.Y.Z")
+                  sys.exit(1)
+          else:
+              version_type = "${{ github.event.inputs.version_type }}"
+              if version_type == "patch":
+                  patch += 1
+              elif version_type == "minor":
+                  minor += 1
+                  patch = 0
+              elif version_type == "major":
+                  major += 1
+                  minor = 0
+                  patch = 0
+              else:
+                  print(f"Error: Unknown version type: {version_type}")
+                  sys.exit(1)
+                  
+              new_version = f"{major}.{minor}.{patch}"
+          
+          # Update the version in pyproject.toml
+          config["project"]["version"] = new_version
+          with open("pyproject.toml", "w") as f:
+              toml.dump(config, f)
+              
+          print(f"New version: {new_version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"new_version={new_version}\n")
+          '
+          
+      - name: Commit and push changes
+        run: |
+          git add pyproject.toml
+          git commit -m "Bump version to ${{ steps.bump_version.outputs.new_version }}"
+          git push
+          
+      - name: Create tag
+        run: |
+          git tag v${{ steps.bump_version.outputs.new_version }}
+          git push --tags
+
+  create-release:
+    needs: bump-version
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.bump-version.outputs.new_version }}
+          name: Release v${{ needs.bump-version.outputs.new_version }}
+          body: ${{ github.event.inputs.release_notes || '' }}
+          generate_release_notes: ${{ github.event.inputs.release_notes == '' }}
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
