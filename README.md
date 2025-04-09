@@ -19,11 +19,57 @@ The server implements two tools:
 
 The MCP server relies upon Astral UV to run, please [install](https://docs.astral.sh/uv/getting-started/installation/)
 
-#### Claude Desktop
+<!-- CLIENT-CONFIGURATION-SELECTION -->
+<details>
+<summary><h4>Visual Studio Code Configuration</h4></summary>
 
-On MacOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
-On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
-On Linux: `~/.config/Claude/claude_desktop_config.json`
+To configure this MCP server in VS Code:
+
+1. First, ensure you have GitHub Copilot agent mode enabled in VS Code.
+
+2. Create a `.vscode/mcp.json` file in your workspace with the following configuration:
+
+```json
+{
+  "servers": {
+    "codelogic-mcp-server": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "codelogic-mcp-server@latest"
+      ],
+      "env": {
+        "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
+        "CODELOGIC_USERNAME": "<my username>",
+        "CODELOGIC_PASSWORD": "<my password>",
+        "CODELOGIC_MV_NAME": "<my materialized view>",
+        "CODELOGIC_DEBUG_MODE": "true"
+      }
+    }
+  }
+}
+```
+
+3. Alternatively, you can run the `MCP: Add Server` command from the Command Palette and provide the server information.
+
+4. To manage your MCP servers, use the `MCP: List Servers` command from the Command Palette.
+
+5. Once configured, the server's tools will be available to Copilot agent mode. You can toggle specific tools on/off as needed by clicking the Tools button in the Chat view when in agent mode.
+
+6. To use the Codelogic tools in agent mode, you can specifically ask about code impacts or database relationships, and the agent will utilize the appropriate tools.
+
+</details>
+
+<details>
+<summary><h4>Claude Desktop Configuration</h4></summary>
+
+Configure Claude Desktop by editing the configuration file:
+
+- On MacOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
+- On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
+- On Linux: `~/.config/Claude/claude_desktop_config.json`
+
+Add the following to your configuration file:
 
 ```json
 "mcpServers": {
@@ -36,13 +82,17 @@ On Linux: `~/.config/Claude/claude_desktop_config.json`
       "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
       "CODELOGIC_USERNAME": "<my username>",
       "CODELOGIC_PASSWORD": "<my password>",
-      "CODELOGIC_MV_NAME": "<my marterialized view>"
+      "CODELOGIC_MV_NAME": "<my materialized view>"
     }
   }
 }
 ```
 
-#### Windsurf IDE
+After adding the configuration, restart Claude Desktop to apply the changes.
+</details>
+
+<details>
+<summary><h4>Windsurf IDE Configuration</h4></summary>
 
 To run this MCP server with [Windsurf IDE](https://codeium.com/windsurf):
 
@@ -63,7 +113,7 @@ Add the following configuration to your file:
       "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
       "CODELOGIC_USERNAME": "<my username>",
       "CODELOGIC_PASSWORD": "<my password>",
-      "CODELOGIC_MV_NAME": "<my marterialized view>"
+      "CODELOGIC_MV_NAME": "<my materialized view>"
     }
   }
 }
@@ -78,6 +128,8 @@ When I ask you to modify existing code, try running the codelogic-method-impact 
 ```
 
 After adding the configuration, restart Windsurf IDE or refresh the tools to apply the changes.
+</details>
+<!-- END-CLIENT-CONFIGURATION-SELECTION -->
 
 ### Environment Variables
 
