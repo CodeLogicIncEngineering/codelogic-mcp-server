@@ -33,3 +33,24 @@ jobs:
       run: |
         uv build --no-sources
         uv publish --token $PYPI_API_TOKEN
+        
+    - name: Extract package version
+      id: get_version
+      run: |
+        PACKAGE_VERSION=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
+        echo "version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
+    
+    - name: Notify Slack about PyPI release
+      id: slack
+      uses: slackapi/slack-github-action@v1.25.0
+      with:
+        channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+        slack-message: |
+          :rocket: *New Release Published to PyPI!*
+          
+          *Package:* codelogic-mcp-server v${{ steps.get_version.outputs.version }}
+          *Published by:* ${{ github.actor }}
+          
+          :link: <https://pypi.org/project/codelogic-mcp-server/${{ steps.get_version.outputs.version }}|View on PyPI>
+      env:
+        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}

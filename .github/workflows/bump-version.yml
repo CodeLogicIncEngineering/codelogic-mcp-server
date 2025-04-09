@@ -137,3 +137,20 @@ jobs:
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Notify Slack about new version
+        id: slack
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+          slack-message: |
+            :tada: *New Version Released!*
+            
+            *Package:* codelogic-mcp-server v${{ needs.bump-version.outputs.new_version }}
+            *Released by:* ${{ github.actor }}
+            
+            ${{ github.event.inputs.release_notes || '_No release notes provided._' }}
+            
+            :link: <${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.bump-version.outputs.new_version }}|View Release on GitHub>
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
