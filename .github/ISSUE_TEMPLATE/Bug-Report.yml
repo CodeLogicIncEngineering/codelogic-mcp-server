@@ -24,13 +24,14 @@ body:
     id: reproduction-steps
     attributes:
       label: Steps To Reproduce
-      description: Steps to reproduce the behavior
-      placeholder: |
+      description: |
+        Steps to reproduce the behavior:
         1. API endpoint accessed (e.g., '/v1/generate')
         2. Request payload used (please include relevant JSON)
         3. Client configuration (e.g., authentication method, headers)
         4. Model configuration parameters (if applicable)
         5. Observed error or unexpected behavior
+      placeholder: Provide detailed steps so we can reproduce the issue...
     validations:
       required: true
       
@@ -52,6 +53,7 @@ body:
     id: os
     attributes:
       label: Operating System
+      multiple: true
       options:
         - Windows
         - macOS

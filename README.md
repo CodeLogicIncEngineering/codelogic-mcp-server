@@ -111,6 +111,15 @@ instead of using the **latest** version of the server, you can pin to a specific
     ],
 ```
 
+#### Version Compatibility
+
+This MCP server has the following version compatibility requirements:
+
+- Version 0.3.1 and below: Compatible with all CodeLogic API versions
+- Version 0.4.0 and above: Requires CodeLogic API version 25.10.0 or greater
+
+If you're upgrading, make sure your CodeLogic server meets the minimum API version requirement.
+
 ## Testing
 
 ### Running Unit Tests
