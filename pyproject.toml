@@ -5,7 +5,14 @@ description = "Integrates CodeLogic's powerful codebase knowledge graphs with a 
 readme = "README.md"
 license = "MPL-2.0"
 requires-python = ">=3.13"
-dependencies = [ "debugpy>=1.8.12", "httpx>=0.28.1", "mcp[cli]>=1.3.0", "neo4j>=5.28.1", "pip-licenses>=5.0.0", "python-dotenv>=1.0.1", "tenacity>=9.0.0",]
+dependencies = [
+ "debugpy>=1.8.12",
+ "httpx>=0.28.1",
+ "mcp[cli]>=1.3.0",
+ "pip-licenses>=5.0.0",
+ "python-dotenv>=1.0.1",
+ "tenacity>=9.0.0",
+]
 [[project.authors]]
 name = "garrmark"
 email = "mgarrison@codelogic.com"

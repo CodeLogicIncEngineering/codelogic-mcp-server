@@ -57,8 +57,9 @@ async def main():
                         experimental_capabilities={},
                     ),
                     instructions=("When asked to modify an existing code method, invoke one or both of codelogic-method-impact and codelogic-database-impact "
-                                  "mcp tools against the code provided and any methods that you are proposing changes to.  Make sure the results sent back "
-                                  "from the tool are highlighted as impacts for the given method."
+                                  "mcp tools against the code provided and any methods that you are proposing changes to. When modifying SQL code or database entities, "
+                                  "always use the codelogic-database-impact tool to analyze potential impacts. Make sure the results sent back "
+                                  "from the tool are highlighted as impacts for the given method or database entity."
                                   ),
                 ),
             )
