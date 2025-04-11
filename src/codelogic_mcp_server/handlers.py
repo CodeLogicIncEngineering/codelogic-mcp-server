@@ -64,7 +64,7 @@ async def handle_list_tools() -> list[types.Tool]:
                         "1. Use this tool before implementing code or database changes\n"
                         "2. Search for the relevant database entity\n"
                         "3. Review the impact analysis to understand which code depends on this database object and vice versa\n"
-                        "Particularly crucial when AI-suggested modifications are being considered.",
+                        "Particularly crucial when AI-suggested modifications are being considered or when modifying SQL code.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -223,6 +223,22 @@ The request to retrieve method information from the CodeLogic server timed out o
     # Extract key metrics
     complexity = target_node['properties'].get('statistics.cyclomaticComplexity', 'N/A') if target_node else 'N/A'
     instruction_count = target_node['properties'].get('statistics.instructionCount', 'N/A') if target_node else 'N/A'
+
+    # Extract code owners and reviewers
+    code_owners = target_node['properties'].get('codelogic.owners', []) if target_node else []
+    code_reviewers = target_node['properties'].get('codelogic.reviewers', []) if target_node else []
+    
+    # If target node doesn't have owners/reviewers, try to find them from the class or file node
+    if not code_owners or not code_reviewers:
+        class_node = None
+        if class_name:
+            class_node = next((n for n in nodes if n['primaryLabel'].endswith('ClassEntity') and class_name.lower() in n['name'].lower()), None)
+        
+        if class_node:
+            if not code_owners:
+                code_owners = class_node['properties'].get('codelogic.owners', [])
+            if not code_reviewers:
+                code_reviewers = class_node['properties'].get('codelogic.reviewers', [])
 
     # Identify dependents (systems that depend on this method)
     dependents = []
@@ -391,10 +407,17 @@ The request to retrieve method information from the CodeLogic server timed out o
 ## Summary
 - **Method**: `{method_name}`
 - **Class**: `{class_name or 'N/A'}`
-- **Complexity**: {complexity}
-- **Instruction Count**: {instruction_count}
-- **Affected Applications**: {len(affected_applications)}
 """
+
+    # Add code ownership information if available
+    if code_owners:
+        impact_description += f"- **Code Owners**: {', '.join(code_owners)}\n"
+    if code_reviewers:
+        impact_description += f"- **Code Reviewers**: {', '.join(code_reviewers)}\n"
+
+    impact_description += f"- **Complexity**: {complexity}\n"
+    impact_description += f"- **Instruction Count**: {instruction_count}\n"
+    impact_description += f"- **Affected Applications**: {len(affected_applications)}\n"
 
     # Add affected REST endpoints to the Summary section
     if endpoint_nodes:
@@ -460,6 +483,17 @@ The request to retrieve method information from the CodeLogic server timed out o
     else:
         impact_description += "\n### REST API Risk Assessment\n"
         impact_description += "✅ No direct impact on REST endpoints or API controllers detected\n"
+
+    # Ownership-based consultation recommendation
+    if code_owners or code_reviewers:
+        impact_description += "\n### Code Ownership\n"
+        if code_owners:
+            impact_description += f"👤 **Code Owners**: Changes to this code should be reviewed by: {', '.join(code_owners)}\n"
+        if code_reviewers:
+            impact_description += f"👁️ **Preferred Reviewers**: Consider getting reviews from: {', '.join(code_reviewers)}\n"
+        
+        if code_owners:
+            impact_description += "\nConsult with the code owners before making significant changes to ensure alignment with original design intent.\n"
 
     impact_description += f"""
 ## Method Impact

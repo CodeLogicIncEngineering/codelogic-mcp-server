@@ -493,6 +493,33 @@ def process_database_entity_impact(impact_data, entity_type, entity_name, entity
         if app not in dependent_applications:
             dependent_applications.append(app)
 
+    # Extract code owners and reviewers from the dependent code entities
+    # Since database entities don't typically have ownership metadata directly,
+    # we'll gather this information from the code entities that reference them
+    code_owners = set()
+    code_reviewers = set()
+    
+    # Check code entities that reference this database entity
+    for code_item in dependent_code:
+        code_id = code_item.get("id")
+        code_node = next((n for n in nodes if n['id'] == code_id), None)
+        if code_node:
+            owners = code_node.get('properties', {}).get('codelogic.owners', [])
+            reviewers = code_node.get('properties', {}).get('codelogic.reviewers', [])
+            code_owners.update(owners)
+            code_reviewers.update(reviewers)
+            
+            # Look for parent classes that might contain ownership info
+            for rel in impact_data.get('data', {}).get('relationships', []):
+                if rel.get('type').startswith('CONTAINS_') and rel.get('endId') == code_id:
+                    parent_id = rel.get('startId')
+                    parent_node = find_node_by_id(impact_data.get('data', {}).get('nodes', []), parent_id)
+                    if parent_node and parent_node.get('primaryLabel', '').endswith('ClassEntity'):
+                        parent_owners = parent_node.get('properties', {}).get('codelogic.owners', [])
+                        parent_reviewers = parent_node.get('properties', {}).get('codelogic.reviewers', [])
+                        code_owners.update(parent_owners)
+                        code_reviewers.update(parent_reviewers)
+
     return {
         "entity_type": entity_type,
         "name": entity_name,
@@ -501,6 +528,8 @@ def process_database_entity_impact(impact_data, entity_type, entity_name, entity
         "referencing_tables": referencing_tables,
         "dependent_applications": dependent_applications,
         "parent_table": parent_table,
+        "code_owners": list(code_owners),
+        "code_reviewers": list(code_reviewers),
         "nodes": nodes,
         "relationships": relationships
     }
@@ -720,6 +749,21 @@ def generate_combined_database_report(entity_type, search_name, table_or_view, s
             entity_id = f"`{entity_schema}.{entity_name}`"
 
         report += f"### {i + 1}. {entity_type.capitalize()}: {entity_id}\n\n"
+
+        # Add code ownership information if available
+        code_owners = impact.get("code_owners", [])
+        code_reviewers = impact.get("code_reviewers", [])
+        
+        if code_owners or code_reviewers:
+            report += "#### Code Ownership\n"
+            if code_owners:
+                report += f"👤 **Code Owners**: {', '.join(code_owners)}\n"
+            if code_reviewers:
+                report += f"👁️ **Preferred Reviewers**: {', '.join(code_reviewers)}\n"
+            if code_owners:
+                report += "\nConsult with the code owners before making significant changes to ensure alignment with original design intent.\n\n"
+            else:
+                report += "\n"
 
         # For columns, show the parent table information
         parent_table = impact.get("parent_table")
