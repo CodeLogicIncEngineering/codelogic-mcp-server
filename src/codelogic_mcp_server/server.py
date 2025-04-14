@@ -57,11 +57,20 @@ async def main():
                         notification_options=NotificationOptions(),
                         experimental_capabilities={},
                     ),
-                    instructions=("When asked to modify an existing code method, invoke one or both of codelogic-method-impact and codelogic-database-impact "
-                                  "mcp tools against the code provided and any methods that you are proposing changes to. When modifying SQL code or database entities, "
-                                  "always use the codelogic-database-impact tool to analyze potential impacts. Make sure the results sent back "
-                                  "from the tool are highlighted as impacts for the given method or database entity."
-                                  ),
+                    instructions=(
+                        "When modifying existing code methods:\n"
+                        "- Use codelogic-method-impact to analyze code changes\n"
+                        "- Use codelogic-database-impact for database modifications\n"
+                        "- Highlight impact results for the modified methods\n\n"
+                        "When modifying SQL code or database entities:\n"
+                        "- Always use codelogic-database-impact to analyze potential impacts\n"
+                        "- Highlight impact results for the modified database entities\n\n"
+                        "To use the CodeLogic tools effectively:\n"
+                        "- For code impacts: Ask about specific methods or functions\n"
+                        "- For database relationships: Ask about tables, views, or columns\n"
+                        "- Review the impact results before making changes\n"
+                        "- Consider both direct and indirect impacts"
+                    ),
                 ),
             )
     except Exception as e:

@@ -19,7 +19,6 @@ The server implements two tools:
 
 The MCP server relies upon Astral UV to run, please [install](https://docs.astral.sh/uv/getting-started/installation/)
 
-<!-- CLIENT-CONFIGURATION-SELECTION -->
 <details>
 <summary><h4>Visual Studio Code Configuration</h4></summary>
 
@@ -119,17 +118,134 @@ Add the following configuration to your file:
 }
 ```
 
-Add a **global rule** to help Windsurf call the tools, create or modify the `~/.codeium/windsurf/memories/global_rules.md` markdown file.
-
-Add the following or something similar:
-
-```markdown
-When I ask you to modify existing code, try running the codelogic-method-impact and codelogic-database-impact MCP tools against the code I've provided and any methods or functions that you are changing. Make sure the results sent back from the tool are highlighted as impacts for the given method or function.
-```
-
 After adding the configuration, restart Windsurf IDE or refresh the tools to apply the changes.
 </details>
-<!-- END-CLIENT-CONFIGURATION-SELECTION -->
+
+<details>
+<summary><h4>Cursor Configuration</h4></summary>
+
+To configure the CodeLogic MCP server in Cursor:
+
+1. Configure the MCP server by creating a `.cursor/mcp.json` file:
+
+```json
+{
+  "servers": {
+    "codelogic-mcp-server": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "codelogic-mcp-server@latest"
+      ],
+      "env": {
+        "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
+        "CODELOGIC_USERNAME": "<my username>",
+        "CODELOGIC_PASSWORD": "<my password>",
+        "CODELOGIC_MV_NAME": "<my materialized view>",
+        "CODELOGIC_DEBUG_MODE": "true"
+      }
+    }
+  }
+}
+```
+
+2. Restart Cursor to apply the changes.
+
+The CodeLogic MCP server tools will now be available in your Cursor workspace.
+</details>
+
+### AI Assistant Instructions
+
+To help the AI assistant use the CodeLogic tools effectively, you can add the following instructions to your client's configuration:
+
+#### For VS Code (GitHub Copilot)
+
+Create a `.vscode/copilot-instructions.md` file with the following content:
+
+```markdown
+# CodeLogic MCP Server Instructions
+
+When modifying existing code methods:
+- Use codelogic-method-impact to analyze code changes
+- Use codelogic-database-impact for database modifications
+- Highlight impact results for the modified methods
+
+When modifying SQL code or database entities:
+- Always use codelogic-database-impact to analyze potential impacts
+- Highlight impact results for the modified database entities
+
+To use the CodeLogic tools effectively:
+- For code impacts: Ask about specific methods or functions
+- For database relationships: Ask about tables, views, or columns
+- Review the impact results before making changes
+- Consider both direct and indirect impacts
+```
+
+#### For Claude Desktop
+
+Create a file `~/.claude/instructions.md` with the following content:
+
+```markdown
+# CodeLogic MCP Server Instructions
+
+When modifying existing code methods:
+- Use codelogic-method-impact to analyze code changes
+- Use codelogic-database-impact for database modifications
+- Highlight impact results for the modified methods
+
+When modifying SQL code or database entities:
+- Always use codelogic-database-impact to analyze potential impacts
+- Highlight impact results for the modified database entities
+
+To use the CodeLogic tools effectively:
+- For code impacts: Ask about specific methods or functions
+- For database relationships: Ask about tables, views, or columns
+- Review the impact results before making changes
+- Consider both direct and indirect impacts
+```
+
+#### For Windsurf IDE
+
+Create or modify the `~/.codeium/windsurf/memories/global_rules.md` markdown file with the following content:
+
+```markdown
+When modifying existing code methods:
+- Use codelogic-method-impact to analyze code changes
+- Use codelogic-database-impact for database modifications
+- Highlight impact results for the modified methods
+
+When modifying SQL code or database entities:
+- Always use codelogic-database-impact to analyze potential impacts
+- Highlight impact results for the modified database entities
+
+To use the CodeLogic tools effectively:
+- For code impacts: Ask about specific methods or functions
+- For database relationships: Ask about tables, views, or columns
+- Review the impact results before making changes
+- Consider both direct and indirect impacts
+```
+
+#### For Cursor
+
+Create a `.cursor/rules/codelogic-rules.md` file with the following content:
+
+```markdown
+# CodeLogic MCP Server Rules
+
+## AI Assistant Behavior
+- When modifying existing code methods:
+  - Use codelogic-method-impact to analyze code changes
+  - Use codelogic-database-impact for database modifications
+  - Highlight impact results for the modified methods
+- When modifying SQL code or database entities:
+  - Always use codelogic-database-impact to analyze potential impacts
+  - Highlight impact results for the modified database entities
+- To use the CodeLogic tools effectively:
+  - For code impacts: Ask about specific methods or functions
+  - For database relationships: Ask about tables, views, or columns
+  - Review the impact results before making changes
+  - Consider both direct and indirect impacts
+```
 
 ### Environment Variables
 
