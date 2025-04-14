@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import json
 from datetime import datetime, timedelta
 from io import StringIO
-from codelogic_mcp_server.utils import strip_unused_properties
+from codelogic_mcp_server.utils import strip_unused_properties, find_api_endpoints
 from codelogic_mcp_server import utils
 from test.test_env import TestCase
 
@@ -420,6 +420,140 @@ class TestImpactCaching(TestCase):
 
         # Verify cache expired message
         self.assertIn("Impact cache expired for node-123", self.mock_stderr.getvalue())
+
+
+class TestFindApiEndpoints(unittest.TestCase):
+    """Test the find_api_endpoints utility function"""
+
+    def test_find_api_endpoints_with_annotations(self):
+        """Test finding API endpoints with annotations"""
+        # Mock nodes with REST annotations
+        nodes = [
+            {
+                'id': '1',
+                'name': 'getUser',
+                'primaryLabel': 'JavaMethodEntity',
+                'properties': {
+                    'annotations': ['@GetMapping("/api/users/{id}")']
+                }
+            },
+            {
+                'id': '2',
+                'name': 'UserController',
+                'primaryLabel': 'JavaClassEntity',
+                'properties': {}
+            }
+        ]
+
+        # Mock relationships
+        relationships = [
+            {
+                'startId': '1',
+                'endId': '2',
+                'type': 'CONTAINS_METHOD'
+            }
+        ]
+
+        # Call the function
+        endpoint_nodes, rest_endpoints, api_controllers, endpoint_dependencies = find_api_endpoints(nodes, relationships)
+
+        # Assert results
+        self.assertEqual(len(rest_endpoints), 1)
+        self.assertEqual(rest_endpoints[0]['name'], 'getUser')
+        self.assertIn('@GetMapping', rest_endpoints[0]['annotation'])
+
+    def test_find_api_endpoints_with_controllers(self):
+        """Test finding API controllers"""
+        # Mock nodes with controller classes
+        nodes = [
+            {
+                'id': '1',
+                'name': 'UserController',
+                'primaryLabel': 'JavaClassEntity',
+                'properties': {}
+            }
+        ]
+
+        # Call the function
+        endpoint_nodes, rest_endpoints, api_controllers, endpoint_dependencies = find_api_endpoints(nodes, relationships=[])
+
+        # Assert no results because it's not a controller type
+        self.assertEqual(len(api_controllers), 0)
+
+        # Now test with a proper controller
+        nodes = [
+            {
+                'id': '1',
+                'name': 'UserController',
+                'primaryLabel': 'RestController',
+                'properties': {}
+            }
+        ]
+
+        # Call the function
+        endpoint_nodes, rest_endpoints, api_controllers, endpoint_dependencies = find_api_endpoints(nodes, relationships=[])
+
+        # Assert results
+        self.assertEqual(len(api_controllers), 1)
+        self.assertEqual(api_controllers[0]['name'], 'UserController')
+
+    def test_find_explicit_endpoints(self):
+        """Test finding explicit Endpoint nodes"""
+        # Mock nodes with explicit Endpoint type
+        nodes = [
+            {
+                'id': '1',
+                'name': 'GET /api/users/{id}',
+                'primaryLabel': 'Endpoint',
+                'properties': {
+                    'path': '/api/users/{id}',
+                    'httpVerb': 'GET'
+                }
+            }
+        ]
+
+        # Call the function
+        endpoint_nodes, rest_endpoints, api_controllers, endpoint_dependencies = find_api_endpoints(nodes, relationships=[])
+
+        # Assert results
+        self.assertEqual(len(endpoint_nodes), 1)
+        self.assertEqual(endpoint_nodes[0]['http_verb'], 'GET')
+        self.assertEqual(endpoint_nodes[0]['path'], '/api/users/{id}')
+
+    def test_find_endpoint_dependencies(self):
+        """Test finding dependencies between endpoints"""
+        # Mock nodes
+        nodes = [
+            {
+                'id': '1',
+                'name': 'UsersEndpoint',
+                'primaryLabel': 'Endpoint',
+                'properties': {}
+            },
+            {
+                'id': '2',
+                'name': 'OrdersEndpoint',
+                'primaryLabel': 'Endpoint',
+                'properties': {}
+            }
+        ]
+
+        # Mock relationships with INVOKES_ENDPOINT
+        relationships = [
+            {
+                'startId': '1',
+                'endId': '2',
+                'type': 'INVOKES_ENDPOINT'
+            }
+        ]
+
+        # Call the function
+        endpoint_nodes, rest_endpoints, api_controllers, endpoint_dependencies = find_api_endpoints(nodes, relationships)
+
+        # Assert results
+        self.assertEqual(len(endpoint_dependencies), 1)
+        self.assertEqual(endpoint_dependencies[0]['source'], 'UsersEndpoint')
+        self.assertEqual(endpoint_dependencies[0]['target'], 'OrdersEndpoint')
 
 
 if __name__ == '__main__':

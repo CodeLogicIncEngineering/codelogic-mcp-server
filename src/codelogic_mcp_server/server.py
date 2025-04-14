@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
 from mcp.server.models import InitializationOptions
+from . import utils
 
 # Only load from .env file if we're not running tests
 # This allows tests to set their own environment variables
@@ -51,7 +52,7 @@ async def main():
                 write_stream,
                 InitializationOptions(
                     server_name="codelogic-mcp-server",
-                    server_version="0.1.0",
+                    server_version=utils.get_package_version(),
                     capabilities=server.get_capabilities(
                         notification_options=NotificationOptions(),
                         experimental_capabilities={},

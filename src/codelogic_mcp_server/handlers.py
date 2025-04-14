@@ -17,7 +17,7 @@ import os
 import sys
 from .server import server
 import mcp.types as types
-from .utils import extract_nodes, extract_relationships, get_mv_id, get_method_nodes, get_impact, find_node_by_id, search_database_entity, process_database_entity_impact, generate_combined_database_report
+from .utils import extract_nodes, extract_relationships, get_mv_id, get_method_nodes, get_impact, find_node_by_id, search_database_entity, process_database_entity_impact, generate_combined_database_report, find_api_endpoints
 import time
 from datetime import datetime
 
@@ -227,13 +227,13 @@ The request to retrieve method information from the CodeLogic server timed out o
     # Extract code owners and reviewers
     code_owners = target_node['properties'].get('codelogic.owners', []) if target_node else []
     code_reviewers = target_node['properties'].get('codelogic.reviewers', []) if target_node else []
-    
+
     # If target node doesn't have owners/reviewers, try to find them from the class or file node
     if not code_owners or not code_reviewers:
         class_node = None
         if class_name:
             class_node = next((n for n in nodes if n['primaryLabel'].endswith('ClassEntity') and class_name.lower() in n['name'].lower()), None)
-        
+
         if class_node:
             if not code_owners:
                 code_owners = class_node['properties'].get('codelogic.owners', [])
@@ -295,56 +295,8 @@ The request to retrieve method information from the CodeLogic server timed out o
                         app_dependencies[app_name] = []
                     app_dependencies[app_name].append(depends_on)
 
-    # Identify REST endpoints or API controllers that might be affected
-    rest_endpoints = []
-    api_controllers = []
-    endpoint_nodes = []
-
-    # Look for Endpoint nodes directly
-    for node_item in nodes:
-        # Check for Endpoint primary label
-        if node_item.get('primaryLabel') == 'Endpoint':
-            endpoint_nodes.append({
-                'name': node_item.get('name', ''),
-                'path': node_item.get('properties', {}).get('path', ''),
-                'http_verb': node_item.get('properties', {}).get('httpVerb', ''),
-                'id': node_item.get('id')
-            })
-
-        # Check for controller types
-        if any(term in node_item.get('primaryLabel', '').lower() for term in
-                ['controller', 'restendpoint', 'apiendpoint', 'webservice']):
-            api_controllers.append({
-                'name': node_item.get('name', ''),
-                'type': node_item.get('primaryLabel', '')
-            })
-
-        # Check for REST annotations on methods
-        if node_item.get('primaryLabel') in ['JavaMethodEntity', 'DotNetMethodEntity']:
-            annotations = node_item.get('properties', {}).get('annotations', [])
-            if annotations and any(
-                    anno.lower() in str(annotations).lower() for anno in
-                    [
-                        'getmapping', 'postmapping', 'putmapping', 'deletemapping',
-                        'requestmapping', 'httpget', 'httppost', 'httpput', 'httpdelete'
-                    ]):
-                rest_endpoints.append({
-                    'name': node_item.get('name', ''),
-                    'annotation': str([a for a in annotations if any(m in a.lower() for m in ['mapping', 'http'])])
-                })
-
-    # Look for endpoint-to-endpoint dependencies
-    endpoint_dependencies = []
-    for rel in impact_data.get('data', {}).get('relationships', []):
-        if rel.get('type') in ['INVOKES_ENDPOINT', 'REFERENCES_ENDPOINT']:
-            start_node = find_node_by_id(impact_data.get('data', {}).get('nodes', []), rel.get('startId'))
-            end_node = find_node_by_id(impact_data.get('data', {}).get('nodes', []), rel.get('endId'))
-
-            if start_node and end_node:
-                endpoint_dependencies.append({
-                    'source': start_node.get('name', 'Unknown'),
-                    'target': end_node.get('name', 'Unknown')
-                })
+    # Use the new utility function to detect API endpoints and controllers
+    endpoint_nodes, rest_endpoints, api_controllers, endpoint_dependencies = find_api_endpoints(nodes, impact_data.get('data', {}).get('relationships', []))
 
     # Format nodes with metrics in markdown table format
     nodes_table = "| Name | Type | Complexity | Instruction Count | Method Count | Outgoing Refs | Incoming Refs |\n"
@@ -491,7 +443,7 @@ The request to retrieve method information from the CodeLogic server timed out o
             impact_description += f"👤 **Code Owners**: Changes to this code should be reviewed by: {', '.join(code_owners)}\n"
         if code_reviewers:
             impact_description += f"👁️ **Preferred Reviewers**: Consider getting reviews from: {', '.join(code_reviewers)}\n"
-        
+
         if code_owners:
             impact_description += "\nConsult with the code owners before making significant changes to ensure alignment with original design intent.\n"
 
