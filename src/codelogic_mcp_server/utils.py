@@ -16,9 +16,35 @@ import os
 import sys
 import httpx
 import json
+import toml
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 import urllib.parse
+
+def get_package_version() -> str:
+    """
+    Get the package version from pyproject.toml.
+    
+    Returns:
+        str: The package version from pyproject.toml
+        
+    Raises:
+        FileNotFoundError: If pyproject.toml cannot be found
+        KeyError: If version cannot be found in pyproject.toml
+    """
+    try:
+        # Get the directory containing this file
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Go up to the project root (where pyproject.toml is)
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+        pyproject_path = os.path.join(project_root, 'pyproject.toml')
+        
+        with open(pyproject_path, 'r') as f:
+            config = toml.load(f)
+            return config['project']['version']
+    except Exception as e:
+        print(f"Warning: Could not read version from pyproject.toml: {e}", file=sys.stderr)
+        return "0.0.0"  # Fallback version if we can't read pyproject.toml
 
 # Cache TTL settings from environment variables (in seconds)
 TOKEN_CACHE_TTL = int(os.getenv('CODELOGIC_TOKEN_CACHE_TTL', '3600'))  # Default 1 hour
@@ -498,7 +524,7 @@ def process_database_entity_impact(impact_data, entity_type, entity_name, entity
     # we'll gather this information from the code entities that reference them
     code_owners = set()
     code_reviewers = set()
-    
+
     # Check code entities that reference this database entity
     for code_item in dependent_code:
         code_id = code_item.get("id")
@@ -508,7 +534,7 @@ def process_database_entity_impact(impact_data, entity_type, entity_name, entity
             reviewers = code_node.get('properties', {}).get('codelogic.reviewers', [])
             code_owners.update(owners)
             code_reviewers.update(reviewers)
-            
+
             # Look for parent classes that might contain ownership info
             for rel in impact_data.get('data', {}).get('relationships', []):
                 if rel.get('type').startswith('CONTAINS_') and rel.get('endId') == code_id:
@@ -711,6 +737,76 @@ def find_database_applications(node_id, impact_data):
     return applications
 
 
+def find_api_endpoints(nodes, relationships):
+    """
+    Find API endpoints, controllers, and their dependencies in impact data.
+
+    Args:
+        nodes (list): List of nodes from impact analysis
+        relationships (list): List of relationships from impact analysis
+
+    Returns:
+        tuple: (endpoint_nodes, rest_endpoints, api_controllers, endpoint_dependencies)
+            - endpoint_nodes: Explicit endpoint nodes
+            - rest_endpoints: Methods with REST annotations
+            - api_controllers: Controller classes
+            - endpoint_dependencies: Dependencies between endpoints
+    """
+    # Find explicit endpoints
+    endpoint_nodes = []
+    for node_item in nodes:
+        # Check for Endpoint primary label
+        if node_item.get('primaryLabel') == 'Endpoint':
+            endpoint_nodes.append({
+                'name': node_item.get('name', ''),
+                'path': node_item.get('properties', {}).get('path', ''),
+                'http_verb': node_item.get('properties', {}).get('httpVerb', ''),
+                'id': node_item.get('id')
+            })
+
+    # Find REST-annotated methods
+    rest_endpoints = []
+    api_controllers = []
+
+    for node_item in nodes:
+        # Check for controller types
+        if any(term in node_item.get('primaryLabel', '').lower() for term in
+               ['controller', 'restendpoint', 'apiendpoint', 'webservice']):
+            api_controllers.append({
+                'name': node_item.get('name', ''),
+                'type': node_item.get('primaryLabel', '')
+            })
+
+        # Check for REST annotations on methods
+        if node_item.get('primaryLabel') in ['JavaMethodEntity', 'DotNetMethodEntity']:
+            annotations = node_item.get('properties', {}).get('annotations', [])
+            if annotations and any(
+                    anno.lower() in str(annotations).lower() for anno in
+                    [
+                        'getmapping', 'postmapping', 'putmapping', 'deletemapping',
+                        'requestmapping', 'httpget', 'httppost', 'httpput', 'httpdelete'
+                    ]):
+                rest_endpoints.append({
+                    'name': node_item.get('name', ''),
+                    'annotation': str([a for a in annotations if any(m in a.lower() for m in ['mapping', 'http'])])
+                })
+
+    # Find endpoint dependencies
+    endpoint_dependencies = []
+    for rel in relationships:
+        if rel.get('type') in ['INVOKES_ENDPOINT', 'REFERENCES_ENDPOINT']:
+            start_node = find_node_by_id(nodes, rel.get('startId'))
+            end_node = find_node_by_id(nodes, rel.get('endId'))
+
+            if start_node and end_node:
+                endpoint_dependencies.append({
+                    'source': start_node.get('name', 'Unknown'),
+                    'target': end_node.get('name', 'Unknown')
+                })
+
+    return endpoint_nodes, rest_endpoints, api_controllers, endpoint_dependencies
+
+
 def generate_combined_database_report(entity_type, search_name, table_or_view, search_results, all_impacts):
     """
     Generate a combined report for all database entities.
@@ -753,7 +849,7 @@ def generate_combined_database_report(entity_type, search_name, table_or_view, s
         # Add code ownership information if available
         code_owners = impact.get("code_owners", [])
         code_reviewers = impact.get("code_reviewers", [])
-        
+
         if code_owners or code_reviewers:
             report += "#### Code Ownership\n"
             if code_owners:
