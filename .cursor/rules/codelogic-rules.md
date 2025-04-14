@@ -1,8 +1,8 @@
-# CodeLogic MCP Server - AI Assistant Instructions
+# CodeLogic MCP Server - Cursor Instructions
 
 ## About This Codebase
 
-This repository contains a Model Context Protocol (MCP) server that integrates with CodeLogic's knowledge graph APIs. It enables AI programming assistants (like GitHub Copilot and Cursor) to access dependency data from CodeLogic to analyze code and database impacts.
+This repository contains a Model Context Protocol (MCP) server that integrates with CodeLogic's knowledge graph APIs. It enables AI programming assistants to access dependency data from CodeLogic to analyze code and database impacts.
 
 ## Key Technologies
 
@@ -83,17 +83,34 @@ When implementing new MCP tools:
 - `CODELOGIC_DEBUG_MODE`: Enable debug logging
 - `CODELOGIC_TEST_MODE`: Used by test framework
 
-## AI Assistant Integration
+## Cursor-Specific Features
 
-### GitHub Copilot
-- Uses these instructions via `.github/copilot-instructions.md`
-- Integrates through GitHub's Copilot infrastructure
+### Code Analysis
+- Use semantic search for finding relevant code snippets
+- Utilize grep search for exact pattern matching
+- Analyze method impacts before making changes
+- Check database impacts for SQL and code changes
 
-### Cursor
-- Uses these instructions via `.cursor/instructions.md`
-- Integrates through Cursor's AI infrastructure
-- Supports additional features like:
-  - Direct file editing
-  - Terminal command execution
-  - Code search and analysis
-  - Database impact analysis
+### File Operations
+- Direct file editing with context preservation
+- File creation and deletion capabilities
+- Directory listing and navigation
+
+### Terminal Integration
+- Execute commands in the integrated terminal
+- Background process management
+- Environment variable handling
+
+### Best Practices
+1. Always check method impacts before making changes
+2. Verify database impacts for SQL modifications
+3. Use semantic search before grep for broader context
+4. Maintain proper error handling and logging
+5. Keep code changes atomic and focused
+
+### Tool Usage Guidelines
+1. **Code Search**: Use semantic search for understanding context
+2. **File Operations**: Use edit_file for precise changes
+3. **Terminal Commands**: Use run_terminal_cmd for shell operations
+4. **Impact Analysis**: Use codelogic-method-impact and codelogic-database-impact before changes
+5. **File Management**: Use list_dir and delete_file for file operations 
