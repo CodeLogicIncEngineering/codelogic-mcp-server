@@ -158,7 +158,8 @@ The CodeLogic MCP server tools will now be available in your Cursor workspace.
 
 To help the AI assistant use the CodeLogic tools effectively, you can add the following instructions to your client's configuration:
 
-#### For VS Code (GitHub Copilot)
+<details>
+<summary><h4>VS Code (GitHub Copilot) Instructions</h4></summary>
 
 Create a `.vscode/copilot-instructions.md` file with the following content:
 
@@ -180,8 +181,10 @@ To use the CodeLogic tools effectively:
 - Review the impact results before making changes
 - Consider both direct and indirect impacts
 ```
+</details>
 
-#### For Claude Desktop
+<details>
+<summary><h4>Claude Desktop Instructions</h4></summary>
 
 Create a file `~/.claude/instructions.md` with the following content:
 
@@ -203,8 +206,10 @@ To use the CodeLogic tools effectively:
 - Review the impact results before making changes
 - Consider both direct and indirect impacts
 ```
+</details>
 
-#### For Windsurf IDE
+<details>
+<summary><h4>Windsurf IDE Instructions</h4></summary>
 
 Create or modify the `~/.codeium/windsurf/memories/global_rules.md` markdown file with the following content:
 
@@ -224,8 +229,10 @@ To use the CodeLogic tools effectively:
 - Review the impact results before making changes
 - Consider both direct and indirect impacts
 ```
+</details>
 
-#### For Cursor
+<details>
+<summary><h4>Cursor Instructions</h4></summary>
 
 Create a `.cursor/rules/codelogic-rules.md` file with the following content:
 
@@ -246,6 +253,7 @@ Create a `.cursor/rules/codelogic-rules.md` file with the following content:
   - Review the impact results before making changes
   - Consider both direct and indirect impacts
 ```
+</details>
 
 ### Environment Variables
 
