@@ -154,9 +154,9 @@ To configure the CodeLogic MCP server in Cursor:
 The CodeLogic MCP server tools will now be available in your Cursor workspace.
 </details>
 
-### AI Assistant Instructions
+### AI Assistant Instructions/Rules
 
-To help the AI assistant use the CodeLogic tools effectively, you can add the following instructions to your client's configuration:
+To help the AI assistant use the CodeLogic tools effectively, you can add the following instructions/rules to your client's configuration:
 
 <details>
 <summary><h4>VS Code (GitHub Copilot) Instructions</h4></summary>
@@ -209,7 +209,7 @@ To use the CodeLogic tools effectively:
 </details>
 
 <details>
-<summary><h4>Windsurf IDE Instructions</h4></summary>
+<summary><h4>Windsurf IDE Rules</h4></summary>
 
 Create or modify the `~/.codeium/windsurf/memories/global_rules.md` markdown file with the following content:
 
@@ -232,26 +232,33 @@ To use the CodeLogic tools effectively:
 </details>
 
 <details>
-<summary><h4>Cursor Instructions</h4></summary>
+<summary><h4>Cursor Global Rule</h4></summary>
 
-Create a `.cursor/rules/codelogic-rules.md` file with the following content:
+To configure CodeLogic rules in Cursor:
+
+1. Open Cursor Settings
+2. Navigate to the "Rules" section
+3. Add the following content to "User Rules":
 
 ```markdown
 # CodeLogic MCP Server Rules
 
-## AI Assistant Behavior
-- When modifying existing code methods:
-  - Use codelogic-method-impact to analyze code changes
-  - Use codelogic-database-impact for database modifications
-  - Highlight impact results for the modified methods
-- When modifying SQL code or database entities:
-  - Always use codelogic-database-impact to analyze potential impacts
-  - Highlight impact results for the modified database entities
-- To use the CodeLogic tools effectively:
-  - For code impacts: Ask about specific methods or functions
-  - For database relationships: Ask about tables, views, or columns
-  - Review the impact results before making changes
-  - Consider both direct and indirect impacts
+Please follow these guidelines when working with CodeLogic tools and making code changes.
+
+When modifying existing code methods:
+- Use codelogic-method-impact to analyze code changes
+- Use codelogic-database-impact for database modifications
+- Highlight impact results for the modified methods
+
+When modifying SQL code or database entities:
+- Always use codelogic-database-impact to analyze potential impacts
+- Highlight impact results for the modified database entities
+
+To use the CodeLogic tools effectively:
+- For code impacts: Ask about specific methods or functions
+- For database relationships: Ask about tables, views, or columns
+- Review the impact results before making changes
+- Consider both direct and indirect impacts
 ```
 </details>
 
