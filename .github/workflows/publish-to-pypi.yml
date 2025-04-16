@@ -25,14 +25,22 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install uv toml
+        python -m pip install uv twine toml
     
-    - name: Build and publish
+    - name: Build package
+      run: |
+        rm -rf dist/
+        uv build --no-sources
+        
+    - name: Check distribution with twine
+      run: |
+        twine check dist/*
+        
+    - name: Publish to PyPI
       env:
         PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
       run: |
-        uv build --no-sources
-        uv publish --token $PYPI_API_TOKEN
+        twine upload dist/* -u __token__ -p $PYPI_API_TOKEN
         
     - name: Extract package version
       id: get_version
