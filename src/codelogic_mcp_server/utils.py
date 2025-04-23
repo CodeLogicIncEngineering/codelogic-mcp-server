@@ -69,7 +69,7 @@ _client = httpx.Client(
 )
 
 # Encode the workspace name to ensure it is safe for use in API calls
-encoded_workspace_name = urllib.parse.quote(os.getenv("CODELOGIC_MV_NAME"))
+encoded_workspace_name = urllib.parse.quote(os.getenv("CODELOGIC_WORKSPACE_NAME") or "")
 
 
 def find_node_by_id(nodes, id):

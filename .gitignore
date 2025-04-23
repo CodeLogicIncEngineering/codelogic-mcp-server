@@ -17,3 +17,4 @@ test/.env.test
 # Logs folder
 logs/
 .specstory/
+impact_analysis_result_*.md

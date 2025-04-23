@@ -6,10 +6,18 @@
 """
 MCP tool handlers for the CodeLogic server integration.
 
-This module implements the handlers for MCP tool operations, specifically the
-get-impact tool that analyzes the potential impact of modifying a method or function.
-It processes requests, performs impact analysis using the CodeLogic API, and formats
-results for display to users.
+This module implements the handlers for MCP tool operations, providing two key tools:
+
+1. codelogic-method-impact: Analyzes the potential impact of modifying a method or function
+   by examining dependencies and relationships in the codebase. It processes requests,
+   performs impact analysis using the CodeLogic API, and formats results for display.
+
+2. codelogic-database-impact: Analyzes relationships between code and database entities,
+   helping identify potential impacts when modifying database schemas, tables, views
+   or columns. It examines both direct and indirect dependencies to surface risks.
+
+The handlers process tool requests, interact with the CodeLogic API to gather impact data,
+and format the results in a clear, actionable format for users.
 """
 
 import json
@@ -117,7 +125,7 @@ Please check the server logs for more details.
 
 
 async def handle_method_impact(arguments: dict | None) -> list[types.TextContent]:
-    """Handle the get-impact tool for method/function analysis"""
+    """Handle the codelogic-method-impact tool for method/function analysis"""
     if not arguments:
         sys.stderr.write("Missing arguments\n")
         raise ValueError("Missing arguments")
@@ -131,7 +139,7 @@ async def handle_method_impact(arguments: dict | None) -> list[types.TextContent
         sys.stderr.write("Method must be provided\n")
         raise ValueError("Method must be provided")
 
-    mv_id = get_mv_id(os.getenv("CODELOGIC_MV_NAME"))
+    mv_id = get_mv_id(os.getenv("CODELOGIC_WORKSPACE_NAME") or "")
 
     start_time = time.time()
     nodes = get_method_nodes(mv_id, method_name)

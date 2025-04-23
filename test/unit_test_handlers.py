@@ -26,7 +26,7 @@ class TestHandleCallTool(unittest.TestCase):
         mock_find_node_by_id.side_effect = lambda nodes, id: next(node for node in nodes if node['id'] == id)
 
         # Call the function
-        result = await handle_call_tool('get-impact', {'method': 'method_name'})
+        result = await handle_call_tool('codelogic-method-impact', {'method': 'method_name'})
 
         # Assertions
         mock_request_context.session.send_log_message.assert_any_call(level="info", data="Materialized view ID: mv_id")
@@ -53,7 +53,7 @@ class TestHandleCallTool(unittest.TestCase):
         mock_find_node_by_id.side_effect = lambda nodes, id: next(node for node in nodes if node['id'] == id)
 
         # Call the function
-        result = await handle_call_tool('get-impact', {'function': 'function_name'})
+        result = await handle_call_tool('codelogic-method-impact', {'function': 'function_name'})
 
         # Assertions
         mock_request_context.session.send_log_message.assert_any_call(level="info", data="Materialized view ID: mv_id")
@@ -68,19 +68,19 @@ class TestHandleCallTool(unittest.TestCase):
 
     async def test_handle_call_tool_missing_arguments(self):
         with self.assertRaises(ValueError) as context:
-            await handle_call_tool('get-impact', None)
+            await handle_call_tool('codelogic-method-impact', None)
         self.assertEqual(str(context.exception), "Missing arguments")
 
     async def test_handle_call_tool_missing_method_function(self):
         with self.assertRaises(ValueError) as context:
-            await handle_call_tool('get-impact', {})
+            await handle_call_tool('codelogic-method-impact', {})
         self.assertEqual(str(context.exception), "At least one of method or function must be provided")
 
     @patch('codelogic_mcp_server.handlers.server.request_context')
     async def test_handle_call_tool_missing_request_context(self, mock_request_context):
         mock_request_context.session = None
         with self.assertRaises(LookupError) as context:
-            await handle_call_tool('get-impact', {'method': 'method_name'})
+            await handle_call_tool('codelogic-method-impact', {'method': 'method_name'})
         self.assertEqual(str(context.exception), "Request context is not set")
 
 

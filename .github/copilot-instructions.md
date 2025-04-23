@@ -79,7 +79,7 @@ When implementing new MCP tools:
 - `CODELOGIC_SERVER_HOST`: CodeLogic server URL
 - `CODELOGIC_USERNAME`: Username for authentication
 - `CODELOGIC_PASSWORD`: Password for authentication
-- `CODELOGIC_MV_NAME`: Materialized view name
+- `CODELOGIC_WORKSPACE_NAME`: Workspace name
 - `CODELOGIC_DEBUG_MODE`: Enable debug logging
 - `CODELOGIC_TEST_MODE`: Used by test framework
 

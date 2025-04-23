@@ -27,7 +27,7 @@ def load_test_config(env_file=None):
         load_dotenv(os.path.join(project_root, '.env'))
 
     return {
-        'CODELOGIC_MV_NAME': os.getenv('CODELOGIC_MV_NAME'),
+        'CODELOGIC_WORKSPACE_NAME': os.getenv('CODELOGIC_WORKSPACE_NAME'),
         'CODELOGIC_SERVER_HOST': os.getenv('CODELOGIC_SERVER_HOST'),
         'CODELOGIC_USERNAME': os.getenv('CODELOGIC_USERNAME'),
         'CODELOGIC_PASSWORD': os.getenv('CODELOGIC_PASSWORD'),
@@ -57,7 +57,7 @@ class TestHandleCallToolIntegration(TestCase):
         handle_call_tool, *_ = setup_test_environment(self.config)
 
         async def run_test():
-            result = await handle_call_tool('get-impact', {'method': method_name, 'class': class_name})
+            result = await handle_call_tool('codelogic-method-impact', {'method': method_name, 'class': class_name})
 
             self.assertIsInstance(result, list)
             self.assertGreater(len(result), 0)
@@ -71,7 +71,7 @@ class TestHandleCallToolIntegration(TestCase):
 
         return asyncio.run(run_test())
 
-    def test_handle_call_tool_get_impact_multi_app_java(self):
+    def test_handle_call_tool_codelogic_method_impact_multi_app_java(self):
         """Test impact analysis on Java multi-app environment"""
         self.run_impact_test(
             'addPrefix',
@@ -79,7 +79,7 @@ class TestHandleCallToolIntegration(TestCase):
             'impact_analysis_result_multi_app_java.md'
         )
 
-    def test_handle_call_tool_get_impact_dotnet(self):
+    def test_handle_call_tool_codelogic_method_impact_dotnet(self):
         """Test impact analysis on .NET environment"""
         self.run_impact_test(
             'IsValid',
@@ -101,7 +101,7 @@ class TestUtils(TestCase):
 
         # Initialize shared test resources
         cls.token = authenticate()
-        cls.mv_name = os.getenv('CODELOGIC_MV_NAME')
+        cls.mv_name = os.getenv('CODELOGIC_WORKSPACE_NAME')
         cls.mv_def_id = get_mv_definition_id(cls.mv_name, cls.token)
         cls.mv_id = get_mv_id_from_def(cls.mv_def_id, cls.token)
         cls.nodes = get_method_nodes(cls.mv_id, 'IsValid')

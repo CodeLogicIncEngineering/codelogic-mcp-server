@@ -42,7 +42,7 @@ To configure this MCP server in VS Code:
         "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
         "CODELOGIC_USERNAME": "<my username>",
         "CODELOGIC_PASSWORD": "<my password>",
-        "CODELOGIC_MV_NAME": "<my materialized view>",
+        "CODELOGIC_WORKSPACE_NAME": "<my workspace>",
         "CODELOGIC_DEBUG_MODE": "true"
       }
     }
@@ -81,7 +81,7 @@ Add the following to your configuration file:
       "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
       "CODELOGIC_USERNAME": "<my username>",
       "CODELOGIC_PASSWORD": "<my password>",
-      "CODELOGIC_MV_NAME": "<my materialized view>"
+      "CODELOGIC_WORKSPACE_NAME": "<my workspace>"
     }
   }
 }
@@ -112,7 +112,7 @@ Add the following configuration to your file:
       "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
       "CODELOGIC_USERNAME": "<my username>",
       "CODELOGIC_PASSWORD": "<my password>",
-      "CODELOGIC_MV_NAME": "<my materialized view>"
+      "CODELOGIC_WORKSPACE_NAME": "<my workspace>"
     }
   }
 }
@@ -140,7 +140,7 @@ To configure the CodeLogic MCP server in Cursor:
         "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
         "CODELOGIC_USERNAME": "<my username>",
         "CODELOGIC_PASSWORD": "<my password>",
-        "CODELOGIC_MV_NAME": "<my materialized view>",
+        "CODELOGIC_WORKSPACE_NAME": "<my workspace>",
         "CODELOGIC_DEBUG_MODE": "true"
       }
     }
@@ -261,7 +261,7 @@ The following environment variables can be configured to customize the behavior 
 - `CODELOGIC_SERVER_HOST`: The URL of the CodeLogic server.
 - `CODELOGIC_USERNAME`: Your CodeLogic username.
 - `CODELOGIC_PASSWORD`: Your CodeLogic password.
-- `CODELOGIC_MV_NAME`: The name of the materialized view to use.
+- `CODELOGIC_WORKSPACE_NAME`: The name of the workspace to use.
 - `CODELOGIC_DEBUG_MODE`: Set to `true` to enable debug mode. When enabled, additional debug files such as `timing_log.txt` and `impact_data*.json` will be generated. Defaults to `false`.
 
 ### Example Configuration
@@ -271,7 +271,7 @@ The following environment variables can be configured to customize the behavior 
   "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
   "CODELOGIC_USERNAME": "<my username>",
   "CODELOGIC_PASSWORD": "<my password>",
-  "CODELOGIC_MV_NAME": "<my materialized view>",
+  "CODELOGIC_WORKSPACE_NAME": "<my workspace>",
   "CODELOGIC_DEBUG_MODE": "true"
 }
 ```

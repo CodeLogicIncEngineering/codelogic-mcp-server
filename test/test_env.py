@@ -16,7 +16,7 @@ DEFAULT_TEST_ENV = {
     "CODELOGIC_SERVER_HOST": "https://example.codelogic.test",
     "CODELOGIC_USERNAME": "test_user",
     "CODELOGIC_PASSWORD": "test_password",
-    "CODELOGIC_MV_NAME": "test_materialized_view",
+    "CODELOGIC_WORKSPACE_NAME": "test_workspace",
     "CODELOGIC_TOKEN_CACHE_TTL": "60",  # Short cache for tests
     "CODELOGIC_METHOD_CACHE_TTL": "60",
     "CODELOGIC_IMPACT_CACHE_TTL": "60"
