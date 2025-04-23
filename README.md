@@ -49,6 +49,8 @@ To configure this MCP server in VS Code:
 }
 ```
 
+> **Note:** On some systems, you may need to use the full path to the uvx executable instead of just "uvx". For example: `/home/user/.local/bin/uvx` on Linux/Mac or `C:\Users\username\AppData\Local\astral\uvx.exe` on Windows.
+
 3. Alternatively, you can run the `MCP: Add Server` command from the Command Palette and provide the server information.
 
 4. To manage your MCP servers, use the `MCP: List Servers` command from the Command Palette.
@@ -87,6 +89,8 @@ Add the following to your configuration file:
 }
 ```
 
+> **Note:** On some systems, you may need to use the full path to the uvx executable instead of just "uvx". For example: `/home/user/.local/bin/uvx` on Linux/Mac or `C:\Users\username\AppData\Local\astral\uvx.exe` on Windows.
+
 After adding the configuration, restart Claude Desktop to apply the changes.
 </details>
 
@@ -118,6 +122,8 @@ Add the following configuration to your file:
 }
 ```
 
+> **Note:** On some systems, you may need to use the full path to the uvx executable instead of just "uvx". For example: `/home/user/.local/bin/uvx` on Linux/Mac or `C:\Users\username\AppData\Local\astral\uvx.exe` on Windows.
+
 After adding the configuration, restart Windsurf IDE or refresh the tools to apply the changes.
 </details>
 
@@ -130,9 +136,8 @@ To configure the CodeLogic MCP server in Cursor:
 
 ```json
 {
-  "servers": {
+  "mcpServers": {
     "codelogic-mcp-server": {
-      "type": "stdio",
       "command": "uvx",
       "args": [
         "codelogic-mcp-server@latest"
@@ -148,6 +153,8 @@ To configure the CodeLogic MCP server in Cursor:
   }
 }
 ```
+
+> **Note:** On some systems, you may need to use the full path to the uvx executable instead of just "uvx". For example: `/home/user/.local/bin/uvx` on Linux/Mac or `C:\Users\username\AppData\Local\astral\uvx.exe` on Windows.
 
 2. Restart Cursor to apply the changes.
 

@@ -16,3 +16,4 @@ test/.env.test
 
 # Logs folder
 logs/
+.specstory/
