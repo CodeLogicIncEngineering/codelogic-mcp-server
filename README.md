@@ -19,8 +19,9 @@ The server implements two tools:
 
 The MCP server relies upon Astral UV to run, please [install](https://docs.astral.sh/uv/getting-started/installation/)
 
-<details>
-<summary><h4>Visual Studio Code Configuration</h4></summary>
+## Configuration for Different IDEs
+
+### Visual Studio Code Configuration
 
 To configure this MCP server in VS Code:
 
@@ -59,10 +60,7 @@ To configure this MCP server in VS Code:
 
 6. To use the Codelogic tools in agent mode, you can specifically ask about code impacts or database relationships, and the agent will utilize the appropriate tools.
 
-</details>
-
-<details>
-<summary><h4>Claude Desktop Configuration</h4></summary>
+### Claude Desktop Configuration
 
 Configure Claude Desktop by editing the configuration file:
 
@@ -92,10 +90,8 @@ Add the following to your configuration file:
 > **Note:** On some systems, you may need to use the full path to the uvx executable instead of just "uvx". For example: `/home/user/.local/bin/uvx` on Linux/Mac or `C:\Users\username\AppData\Local\astral\uvx.exe` on Windows.
 
 After adding the configuration, restart Claude Desktop to apply the changes.
-</details>
 
-<details>
-<summary><h4>Windsurf IDE Configuration</h4></summary>
+### Windsurf IDE Configuration
 
 To run this MCP server with [Windsurf IDE](https://codeium.com/windsurf):
 
@@ -125,10 +121,8 @@ Add the following configuration to your file:
 > **Note:** On some systems, you may need to use the full path to the uvx executable instead of just "uvx". For example: `/home/user/.local/bin/uvx` on Linux/Mac or `C:\Users\username\AppData\Local\astral\uvx.exe` on Windows.
 
 After adding the configuration, restart Windsurf IDE or refresh the tools to apply the changes.
-</details>
 
-<details>
-<summary><h4>Cursor Configuration</h4></summary>
+### Cursor Configuration
 
 To configure the CodeLogic MCP server in Cursor:
 
@@ -159,14 +153,12 @@ To configure the CodeLogic MCP server in Cursor:
 2. Restart Cursor to apply the changes.
 
 The CodeLogic MCP server tools will now be available in your Cursor workspace.
-</details>
 
-### AI Assistant Instructions/Rules
+## AI Assistant Instructions/Rules
 
 To help the AI assistant use the CodeLogic tools effectively, you can add the following instructions/rules to your client's configuration:
 
-<details>
-<summary><h4>VS Code (GitHub Copilot) Instructions</h4></summary>
+### VS Code (GitHub Copilot) Instructions
 
 Create a `.vscode/copilot-instructions.md` file with the following content:
 
@@ -188,10 +180,8 @@ To use the CodeLogic tools effectively:
 - Review the impact results before making changes
 - Consider both direct and indirect impacts
 ```
-</details>
 
-<details>
-<summary><h4>Claude Desktop Instructions</h4></summary>
+### Claude Desktop Instructions
 
 Create a file `~/.claude/instructions.md` with the following content:
 
@@ -213,10 +203,8 @@ To use the CodeLogic tools effectively:
 - Review the impact results before making changes
 - Consider both direct and indirect impacts
 ```
-</details>
 
-<details>
-<summary><h4>Windsurf IDE Rules</h4></summary>
+### Windsurf IDE Rules
 
 Create or modify the `~/.codeium/windsurf/memories/global_rules.md` markdown file with the following content:
 
@@ -236,10 +224,8 @@ To use the CodeLogic tools effectively:
 - Review the impact results before making changes
 - Consider both direct and indirect impacts
 ```
-</details>
 
-<details>
-<summary><h4>Cursor Global Rule</h4></summary>
+### Cursor Global Rule
 
 To configure CodeLogic rules in Cursor:
 
@@ -267,9 +253,8 @@ To use the CodeLogic tools effectively:
 - Review the impact results before making changes
 - Consider both direct and indirect impacts
 ```
-</details>
 
-### Environment Variables
+## Environment Variables
 
 The following environment variables can be configured to customize the behavior of the server:
 
@@ -279,7 +264,7 @@ The following environment variables can be configured to customize the behavior 
 - `CODELOGIC_MV_NAME`: The name of the materialized view to use.
 - `CODELOGIC_DEBUG_MODE`: Set to `true` to enable debug mode. When enabled, additional debug files such as `timing_log.txt` and `impact_data*.json` will be generated. Defaults to `false`.
 
-#### Example Configuration
+### Example Configuration
 
 ```json
 "env": {
@@ -291,7 +276,7 @@ The following environment variables can be configured to customize the behavior 
 }
 ```
 
-#### Pinning the version
+### Pinning the version
 
 instead of using the **latest** version of the server, you can pin to a specific version by changing the **args** field to match the version in [pypi](https://pypi.org/project/codelogic-mcp-server/) e.g.
 
@@ -301,7 +286,7 @@ instead of using the **latest** version of the server, you can pin to a specific
     ],
 ```
 
-#### Version Compatibility
+### Version Compatibility
 
 This MCP server has the following version compatibility requirements:
 
