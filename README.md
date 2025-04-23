@@ -235,23 +235,22 @@ To configure CodeLogic rules in Cursor:
 
 ```markdown
 # CodeLogic MCP Server Rules
-
-Please follow these guidelines when working with CodeLogic tools and making code changes.
-
-When modifying existing code methods:
-- Use codelogic-method-impact to analyze code changes
-- Use codelogic-database-impact for database modifications
-- Highlight impact results for the modified methods
-
-When modifying SQL code or database entities:
-- Always use codelogic-database-impact to analyze potential impacts
-- Highlight impact results for the modified database entities
-
-To use the CodeLogic tools effectively:
-- For code impacts: Ask about specific methods or functions
-- For database relationships: Ask about tables, views, or columns
-- Review the impact results before making changes
-- Consider both direct and indirect impacts
+## Codebase
+- The CodeLogic MCP Server is for java, javascript, typescript, and C# dotnet codebases
+- don't run the tools on python or other non supported codebases
+## AI Assistant Behavior
+- When modifying existing code methods:
+  - Use mcp_codelogic_mcp_server_codelogic_method_impact to analyze code changes
+  - Use mcp_codelogic_mcp_server_codelogic_database_impact for database modifications
+  - Highlight impact results for the modified methods
+- When modifying SQL code or database entities:
+  - Always use mcp_codelogic_mcp_server_codelogic_database_impact to analyze potential impacts
+  - Highlight impact results for the modified database entities
+- To use the CodeLogic tools effectively:
+  - For code impacts: Ask about specific methods or functions
+  - For database relationships: Ask about tables, views, or columns
+  - Review the impact results before making changes
+  - Consider both direct and indirect impacts
 ```
 
 ## Environment Variables
