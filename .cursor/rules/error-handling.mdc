@@ -1,0 +1,16 @@
+---
+description: Error handling patterns for the CodeLogic MCP Server
+globs: "**/*.py"
+alwaysApply: false
+---
+- Use the following pattern for error handling in tool implementations:
+```python
+try:
+    # Operations that might fail
+except Exception as e:
+    sys.stderr.write(f"Error: {str(e)}\n")
+    return [types.TextContent(type="text", text=f"# Error\n\n{str(e)}")]
+```
+- Always catch and report exceptions
+- Write errors to stderr
+- Return formatted error messages to the client

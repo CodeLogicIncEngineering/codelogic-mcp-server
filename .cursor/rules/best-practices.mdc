@@ -1,0 +1,8 @@
+---
+description: Best practices for working with the CodeLogic MCP Server codebase
+globs: 
+alwaysApply: false
+---
+- Use semantic search before grep for broader context
+- Maintain proper error handling and logging
+- Keep code changes atomic and focused

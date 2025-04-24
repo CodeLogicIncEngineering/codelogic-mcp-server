@@ -1,0 +1,9 @@
+---
+description: Debugging guidance for the CodeLogic MCP Server
+globs: "**/*.py"
+alwaysApply: false
+---
+- Enable Debug Mode by setting `CODELOGIC_DEBUG_MODE=true`
+- Use debugpy capabilities for remote debugging
+- Check logs in the logs directory for detailed information
+- Use proper logging levels for different types of information

@@ -1,0 +1,10 @@
+---
+description: Style guidelines for the CodeLogic MCP Server project
+globs: "**/*.py"
+alwaysApply: false
+---
+- Include MPL 2.0 copyright headers in all Python files
+- Use Google-style docstrings for modules/classes/functions
+- Always use Python type hints
+- Keep I/O operations asynchronous
+- Return markdown-formatted text in tool responses

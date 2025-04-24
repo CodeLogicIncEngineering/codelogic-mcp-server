@@ -1,0 +1,9 @@
+---
+description: File operation guidance for working with the CodeLogic MCP Server
+globs: 
+alwaysApply: false
+---
+- Direct file editing with context preservation
+- File creation and deletion capabilities
+- Directory listing and navigation
+- Maintain proper file organization and structure

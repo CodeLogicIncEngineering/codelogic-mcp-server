@@ -1,0 +1,9 @@
+---
+description: Key technologies used in the CodeLogic MCP Server project
+globs: 
+alwaysApply: false
+---
+- Python 3.13+ with extensive use of async/await
+- Model Context Protocol SDK (`mcp[cli]`)
+- HTTPX for API requests
+- Environment variables via dotenv for configuration

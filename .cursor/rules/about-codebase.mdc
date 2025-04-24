@@ -1,0 +1,8 @@
+---
+description: General information about the CodeLogic MCP Server codebase and its purpose
+globs: 
+alwaysApply: false
+---
+- This repository contains a Model Context Protocol (MCP) server that integrates with CodeLogic's knowledge graph APIs
+- It enables AI programming assistants to access dependency data from CodeLogic to analyze code and database impacts
+- The core package is in src/codelogic_mcp_server/ with server.py, handlers.py, and utils.py
