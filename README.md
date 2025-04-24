@@ -156,7 +156,7 @@ The CodeLogic MCP server tools will now be available in your Cursor workspace.
 
 ## AI Assistant Instructions/Rules
 
-To help the AI assistant use the CodeLogic tools effectively, you can add the following instructions/rules to your client's configuration:
+To help the AI assistant use the CodeLogic tools effectively, you can add the following instructions/rules to your client's configuration. We recommend customizing these instructions to align with your team's specific coding standards, best practices, and workflow requirements:
 
 ### VS Code (GitHub Copilot) Instructions
 
@@ -240,11 +240,11 @@ To configure CodeLogic rules in Cursor:
 - don't run the tools on python or other non supported codebases
 ## AI Assistant Behavior
 - When modifying existing code methods:
-  - Use mcp_codelogic_mcp_server_codelogic_method_impact to analyze code changes
-  - Use mcp_codelogic_mcp_server_codelogic_database_impact for database modifications
+  - Use codelogic-method-impact to analyze code changes
+  - Use codelogic-database-impact for database modifications
   - Highlight impact results for the modified methods
 - When modifying SQL code or database entities:
-  - Always use mcp_codelogic_mcp_server_codelogic_database_impact to analyze potential impacts
+  - Always use codelogic-database-impact to analyze potential impacts
   - Highlight impact results for the modified database entities
 - To use the CodeLogic tools effectively:
   - For code impacts: Ask about specific methods or functions
