@@ -22,7 +22,7 @@ The MCP server relies upon Astral UV to run, please [install](https://docs.astra
 ### MacOS Workaround for uvx
 
 There is a known issue with `uvx` on **MacOS** where the CodeLogic MCP server may fail to launch in certain IDEs (such as Cursor), resulting in errors like:
-See (https://github.com/CodeLogicIncEngineering/codelogic-mcp-server/issues/11)
+See [issue #11](https://github.com/CodeLogicIncEngineering/codelogic-mcp-server/issues/11)
 ```
 Failed to connect client closed
 ```
