@@ -19,6 +19,48 @@ The server implements two tools:
 
 The MCP server relies upon Astral UV to run, please [install](https://docs.astral.sh/uv/getting-started/installation/)
 
+### MacOS Workaround for uvx
+
+There is a known issue with `uvx` on **MacOS** where the CodeLogic MCP server may fail to launch in certain IDEs (such as Cursor), resulting in errors like:
+See [issue #11](https://github.com/CodeLogicIncEngineering/codelogic-mcp-server/issues/11)
+```
+Failed to connect client closed
+```
+
+This appears to be a problem with Astral `uvx` running on MacOS. The following can be used as a workaround:
+
+1. Clone this project locally.
+2. Configure your `mcp.json` to use `uv` instead of `uvx`. For example:
+
+```json
+{
+  "mcpServers": {
+    "codelogic-mcp-server": {
+      "type": "stdio",
+      "command": "<PATH_TO_UV>/uv",
+      "args": [
+        "--directory",
+        "<PATH_TO_THIS_REPO>/codelogic-mcp-server-main",
+        "run",
+        "codelogic-mcp-server"
+      ],
+      "env": {
+        "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
+        "CODELOGIC_USERNAME": "<my username>",
+        "CODELOGIC_PASSWORD": "<my password>",
+        "CODELOGIC_MV_NAME": "<my workspace>",
+        "CODELOGIC_DEBUG_MODE": "true"
+      }
+    }
+  }
+}
+```
+
+3. Restart Cursor.
+4. Ensure the Cursor Global Rule for CodeLogic is in place.
+5. Open the MCP tab in Cursor and refresh the `codelogic-mcp-server`.
+6. Ask Cursor to make a code change in an existing class. The MCP server should now run the impact analysis successfully.
+
 ## Configuration for Different IDEs
 
 ### Visual Studio Code Configuration
