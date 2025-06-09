@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/codelogicincengineering-codelogic-mcp-server-badge.png)](https://mseep.ai/app/codelogicincengineering-codelogic-mcp-server)
+
 # codelogic-mcp-server
 
 An [MCP Server](https://modelcontextprotocol.io/introduction) to utilize Codelogic's rich software dependency data in your AI programming assistant.
