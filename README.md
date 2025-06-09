@@ -336,6 +336,25 @@ This MCP server has the following version compatibility requirements:
 
 If you're upgrading, make sure your CodeLogic server meets the minimum API version requirement.
 
+## Debug Logging
+
+When `CODELOGIC_DEBUG_MODE=true`, debug files are written to the system temporary directory:
+
+- **Windows**: `%TEMP%\codelogic-mcp-server` (typically `C:\Users\{username}\AppData\Local\Temp\codelogic-mcp-server`)
+- **macOS**: `/tmp/codelogic-mcp-server` (or `$TMPDIR/codelogic-mcp-server` if set)  
+- **Linux**: `/tmp/codelogic-mcp-server` (or `$TMPDIR/codelogic-mcp-server` if set)
+
+**Debug files include**:
+- `timing_log.txt` - Performance timing information
+- `impact_data_*.json` - Raw impact analysis data for troubleshooting
+
+**Finding your log directory**:
+```python
+import tempfile
+import os
+print("Log directory:", os.path.join(tempfile.gettempdir(), "codelogic-mcp-server"))
+```
+
 ## Testing
 
 ### Running Unit Tests

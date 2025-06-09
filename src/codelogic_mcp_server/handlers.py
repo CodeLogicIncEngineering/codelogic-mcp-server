@@ -28,15 +28,26 @@ import mcp.types as types
 from .utils import extract_nodes, extract_relationships, get_mv_id, get_method_nodes, get_impact, find_node_by_id, search_database_entity, process_database_entity_impact, generate_combined_database_report, find_api_endpoints
 import time
 from datetime import datetime
+import tempfile
 
 DEBUG_MODE = os.getenv("CODELOGIC_DEBUG_MODE", "false").lower() == "true"
 
-LOGS_DIR = "logs"
-os.makedirs(LOGS_DIR, exist_ok=True)
+# Use a user-specific temporary directory for logs to avoid permission issues when running via uvx
+# Only create the directory when debug mode is enabled
+LOGS_DIR = os.path.join(tempfile.gettempdir(), "codelogic-mcp-server")
+if DEBUG_MODE:
+    os.makedirs(LOGS_DIR, exist_ok=True)
+
+
+def ensure_logs_dir():
+    """Ensure the logs directory exists when needed for debug mode."""
+    if DEBUG_MODE:
+        os.makedirs(LOGS_DIR, exist_ok=True)
 
 
 def write_json_to_file(file_path, data):
     """Write JSON data to a file with improved formatting."""
+    ensure_logs_dir()
     with open(file_path, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=4, separators=(", ", ": "), ensure_ascii=False, sort_keys=True)
 
@@ -147,6 +158,7 @@ async def handle_method_impact(arguments: dict | None) -> list[types.TextContent
     duration = end_time - start_time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if DEBUG_MODE:
+        ensure_logs_dir()
         with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
             log_file.write(f"{timestamp} - get_method_nodes for method '{method_name}' in class '{class_name}' took {duration:.4f} seconds\n")
 
@@ -188,6 +200,7 @@ The request to retrieve method information from the CodeLogic server timed out o
     duration = end_time - start_time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if DEBUG_MODE:
+        ensure_logs_dir()
         with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
             log_file.write(f"{timestamp} - get_impact for node '{node['name']}' took {duration:.4f} seconds\n")
         method_file_name = os.path.join(LOGS_DIR, f"impact_data_method_{class_name}_{method_name}.json") if class_name else os.path.join(LOGS_DIR, f"impact_data_method_{method_name}.json")
@@ -535,6 +548,7 @@ async def handle_database_impact(arguments: dict | None) -> list[types.TextConte
     duration = end_time - start_time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if DEBUG_MODE:
+        ensure_logs_dir()
         with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
             log_file.write(f"{timestamp} - search_database_entity for {entity_type} '{name}' took {duration:.4f} seconds\n")
 
@@ -563,6 +577,7 @@ async def handle_database_impact(arguments: dict | None) -> list[types.TextConte
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if DEBUG_MODE:
+                ensure_logs_dir()
                 with open(os.path.join(LOGS_DIR, "timing_log.txt"), "a") as log_file:
                     log_file.write(f"{timestamp} - get_impact for {entity_type} '{entity_name}' took {duration:.4f} seconds\n")
                 write_json_to_file(os.path.join(LOGS_DIR, f"impact_data_{entity_type}_{entity_name}.json"), json.loads(impact))
