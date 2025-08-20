@@ -1,4 +1,5 @@
 # codelogic-mcp-server
+[![Trust Score](https://archestra.ai/mcp-catalog/api/badge/quality/CodeLogicIncEngineering/codelogic-mcp-server)](https://archestra.ai/mcp-catalog/codelogicincengineering__codelogic-mcp-server)
 
 An [MCP Server](https://modelcontextprotocol.io/introduction) to utilize Codelogic's rich software dependency data in your AI programming assistant.
 
