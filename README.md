@@ -48,7 +48,7 @@ This appears to be a problem with Astral `uvx` running on MacOS. The following c
         "CODELOGIC_SERVER_HOST": "<url to the server e.g. https://myco.app.codelogic.com>",
         "CODELOGIC_USERNAME": "<my username>",
         "CODELOGIC_PASSWORD": "<my password>",
-        "CODELOGIC_MV_NAME": "<my workspace>",
+        "CODELOGIC_WORKSPACE_NAME": "<my workspace>",
         "CODELOGIC_DEBUG_MODE": "true"
       }
     }
