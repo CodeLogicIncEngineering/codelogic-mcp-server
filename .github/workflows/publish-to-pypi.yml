@@ -52,13 +52,25 @@ jobs:
       id: slack
       uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
       with:
-        channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
-        slack-message: |
-          :rocket: *New Release Published to PyPI!*
-          
-          *Package:* codelogic-mcp-server v${{ steps.get_version.outputs.version }}
-          *Published by:* ${{ github.actor }}
-          
-          :link: <https://pypi.org/project/codelogic-mcp-server/${{ steps.get_version.outputs.version }}|View on PyPI>
-      env:
-        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        method: chat.postMessage
+        token: ${{ secrets.SLACK_BOT_TOKEN }}
+        payload-templated: true
+        payload: |
+          {
+            "channel": "${{ secrets.SLACK_CHANNEL_ID }}",
+            "text": "New Release Published to PyPI: codelogic-mcp-server v${{ steps.get_version.outputs.version }}",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": ":rocket: *New Release Published to PyPI!*"}
+              },
+              {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": "*Package:* codelogic-mcp-server v${{ steps.get_version.outputs.version }}\n*Published by:* ${{ github.actor }}"}
+              },
+              {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": ":link: <https://pypi.org/project/codelogic-mcp-server/${{ steps.get_version.outputs.version }}|View on PyPI>"}
+              }
+            ]
+          }
