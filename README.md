@@ -379,3 +379,7 @@ python -m unittest discover -s test -p "integration_*.py"
 ```
 
 Note: Integration tests require access to a CodeLogic server instance.
+
+## Validation for Official MCP Registry
+
+mcp-name: io.github.CodeLogicIncEngineering/codelogic-mcp-server
