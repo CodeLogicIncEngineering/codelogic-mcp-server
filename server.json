@@ -1,5 +1,5 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-16/server.schema.json",
   "name": "io.github.CodeLogicIncEngineering/codelogic-mcp-server",
   "description": "An MCP Server to utilize Codelogic's rich software dependency data in your AI programming assistant.",
   "status": "active",
@@ -10,14 +10,14 @@
   "version": "1.0.7",
   "packages": [
     {
-      "registry_type": "pypi",
-      "registry_base_url": "https://pypi.org",
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
       "identifier": "codelogic-mcp-server",
       "version": "1.0.7",
       "transport": {
         "type": "stdio"
       },
-      "environment_variables": [
+      "environmentVariables": [
         {
           "description": "url to the CodeLogic server e.g. https://myco.app.codelogic.com",
           "is_required": true,
