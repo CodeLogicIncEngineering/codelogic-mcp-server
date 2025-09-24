@@ -45,15 +45,29 @@ jobs:
       run: |
         twine upload dist/* -u __token__ -p $PYPI_API_TOKEN
     
+    - name: Show server.json before publish
+      run: |
+        echo "server.json (pre-publish):"
+        cat server.json
+        echo
+        python - << 'PY'
+        import json
+        data = json.load(open('server.json'))
+        print('packages[0] keys:', list(data.get('packages', [{}])[0].keys()))
+        PY
+
     - name: Install MCP Publisher
       run: |
         curl -L "https://github.com/modelcontextprotocol/registry/releases/download/v1.0.0/mcp-publisher_1.0.0_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+    - name: Validate server.json with MCP Publisher
+      run: ./mcp-publisher validate --file server.json
 
     - name: Login to MCP Registry (OIDC)
       run: ./mcp-publisher login github-oidc
 
     - name: Publish to MCP Registry
-      run: ./mcp-publisher publish
+      run: ./mcp-publisher publish --file server.json
         
     - name: Extract package version
       id: get_version
