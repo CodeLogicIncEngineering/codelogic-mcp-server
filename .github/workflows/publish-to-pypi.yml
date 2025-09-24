@@ -56,9 +56,16 @@ jobs:
         print('packages[0] keys:', list(data.get('packages', [{}])[0].keys()))
         PY
 
-    - name: Install MCP Publisher
+    - name: Install MCP Publisher (latest)
       run: |
-        curl -L "https://github.com/modelcontextprotocol/registry/releases/download/v1.0.0/mcp-publisher_1.0.0_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+        set -euo pipefail
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m)
+        if [ "$ARCH" = "x86_64" ]; then ARCH=amd64; elif [ "$ARCH" = "aarch64" ]; then ARCH=arm64; else echo "Unsupported arch: $ARCH"; exit 1; fi
+        URL=$(curl -s https://api.github.com/repos/modelcontextprotocol/registry/releases/latest | grep -o "\"browser_download_url\": \"[^\"]*mcp-publisher_[^\"]*_${OS}_${ARCH}\.tar\.gz\"" | head -n1 | cut -d '"' -f4)
+        echo "Downloading: $URL"
+        curl -L "$URL" | tar xz mcp-publisher
+        ./mcp-publisher --help || true
 
     - name: Login to MCP Registry (OIDC)
       run: ./mcp-publisher login github-oidc
