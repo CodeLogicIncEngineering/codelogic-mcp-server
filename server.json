@@ -7,13 +7,13 @@
     "url": "https://github.com/CodeLogicIncEngineering/codelogic-mcp-server",
     "source": "github"
   },
-  "version": "1.0.6",
+  "version": "1.0.7",
   "packages": [
     {
       "registry_type": "pypi",
       "registry_base_url": "https://pypi.org",
       "identifier": "codelogic-mcp-server",
-      "version": "1.0.6",
+      "version": "1.0.7",
       "transport": {
         "type": "stdio"
       },
