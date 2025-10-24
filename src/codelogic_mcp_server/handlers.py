@@ -710,9 +710,22 @@ async def handle_docker_agent(arguments: dict | None) -> list[types.TextContent]
     ci_platform = arguments.get("ci_platform", "generic")
     include_build_info = arguments.get("include_build_info", True)
 
+    # Validate required parameters
     if not agent_type or not scan_path or not application_name:
         sys.stderr.write("Agent type, scan path, and application name are required\n")
         raise ValueError("Agent type, scan path, and application name are required")
+
+    # Validate agent type
+    valid_agent_types = ["dotnet", "java", "sql", "typescript"]
+    if agent_type not in valid_agent_types:
+        sys.stderr.write(f"Invalid agent type: {agent_type}. Must be one of: {', '.join(valid_agent_types)}\n")
+        raise ValueError(f"Invalid agent type: {agent_type}. Must be one of: {', '.join(valid_agent_types)}")
+
+    # Validate CI platform
+    valid_ci_platforms = ["jenkins", "github-actions", "azure-devops", "gitlab", "generic"]
+    if ci_platform not in valid_ci_platforms:
+        sys.stderr.write(f"Invalid CI platform: {ci_platform}. Must be one of: {', '.join(valid_ci_platforms)}\n")
+        raise ValueError(f"Invalid CI platform: {ci_platform}. Must be one of: {', '.join(valid_ci_platforms)}")
 
     # Get server configuration
     server_host = os.getenv("CODELOGIC_SERVER_HOST", "https://your-instance.app.codelogic.com")
@@ -745,9 +758,22 @@ async def handle_build_info(arguments: dict | None) -> list[types.TextContent]:
     ci_platform = arguments.get("ci_platform")
     output_format = arguments.get("output_format", "docker")
 
+    # Validate required parameters
     if not build_type:
         sys.stderr.write("Build type is required\n")
         raise ValueError("Build type is required")
+
+    # Validate build type
+    valid_build_types = ["git-info", "build-log", "metadata", "all"]
+    if build_type not in valid_build_types:
+        sys.stderr.write(f"Invalid build type: {build_type}. Must be one of: {', '.join(valid_build_types)}\n")
+        raise ValueError(f"Invalid build type: {build_type}. Must be one of: {', '.join(valid_build_types)}")
+
+    # Validate output format
+    valid_output_formats = ["docker", "standalone", "jenkins", "yaml"]
+    if output_format not in valid_output_formats:
+        sys.stderr.write(f"Invalid output format: {output_format}. Must be one of: {', '.join(valid_output_formats)}\n")
+        raise ValueError(f"Invalid output format: {output_format}. Must be one of: {', '.join(valid_output_formats)}")
 
     # Generate build info configuration
     build_info_config = generate_build_info_config(
@@ -775,9 +801,28 @@ async def handle_pipeline_helper(arguments: dict | None) -> list[types.TextConte
     include_notifications = arguments.get("include_notifications", True)
     scan_space_strategy = arguments.get("scan_space_strategy", "unique-per-branch")
 
+    # Validate required parameters
     if not ci_platform or not agent_type:
         sys.stderr.write("CI platform and agent type are required\n")
         raise ValueError("CI platform and agent type are required")
+
+    # Validate CI platform
+    valid_ci_platforms = ["jenkins", "github-actions", "azure-devops", "gitlab"]
+    if ci_platform not in valid_ci_platforms:
+        sys.stderr.write(f"Invalid CI platform: {ci_platform}. Must be one of: {', '.join(valid_ci_platforms)}\n")
+        raise ValueError(f"Invalid CI platform: {ci_platform}. Must be one of: {', '.join(valid_ci_platforms)}")
+
+    # Validate agent type
+    valid_agent_types = ["dotnet", "java", "sql", "typescript"]
+    if agent_type not in valid_agent_types:
+        sys.stderr.write(f"Invalid agent type: {agent_type}. Must be one of: {', '.join(valid_agent_types)}\n")
+        raise ValueError(f"Invalid agent type: {agent_type}. Must be one of: {', '.join(valid_agent_types)}")
+
+    # Validate scan space strategy
+    valid_strategies = ["unique-per-branch", "shared-development", "environment-based"]
+    if scan_space_strategy not in valid_strategies:
+        sys.stderr.write(f"Invalid scan space strategy: {scan_space_strategy}. Must be one of: {', '.join(valid_strategies)}\n")
+        raise ValueError(f"Invalid scan space strategy: {scan_space_strategy}. Must be one of: {', '.join(valid_strategies)}")
 
     # Generate pipeline configuration
     pipeline_config = generate_pipeline_config(
@@ -845,6 +890,24 @@ def generate_docker_agent_config(agent_type, scan_path, application_name, scan_s
 
 ### Validation Checks
 {format_validation_checks(structured_config['validation_checks'])}
+
+## 🔧 Environment Variable Usage Guide
+
+### For CodeLogic Analyze Operations:
+- **Required**: `CODELOGIC_HOST`, `AGENT_UUID`, `AGENT_PASSWORD`
+- **Do NOT include**: `JOB_NAME`, `BUILD_NUMBER`, `GIT_COMMIT`, `GIT_BRANCH`
+- **Purpose**: Basic authentication for code scanning
+
+### For CodeLogic Build Info Operations:
+- **Required**: `CODELOGIC_HOST`, `AGENT_UUID`, `AGENT_PASSWORD`
+- **Optional**: `JOB_NAME`, `BUILD_NUMBER`, `BUILD_STATUS`, `GIT_COMMIT`, `GIT_BRANCH`
+- **Purpose**: Send build metadata and context to CodeLogic
+
+### Important Notes:
+- **Analyze operations** only need basic authentication
+- **Build info operations** need additional metadata variables
+- **Do NOT mix** environment variables between operation types
+- **Each operation** has specific environment variable requirements
 
 ## 📋 Structured Data for AI Processing
 
@@ -918,8 +981,17 @@ def get_target_files(ci_platform):
 
 
 def generate_docker_command(agent_type, scan_path, application_name, scan_space_name, server_host, agent_image):
-    """Generate the Docker command template"""
-    return f"""docker run --pull always --rm --interactive \\
+    """Generate the Docker command template with proper environment variable handling"""
+    return f"""# CodeLogic Analyze Operation - Docker Command
+
+## Required Environment Variables (Analyze Operation)
+- `CODELOGIC_HOST`: {server_host}
+- `AGENT_UUID`: your-agent-uuid  
+- `AGENT_PASSWORD`: your-agent-password
+
+## Docker Command
+```bash
+docker run --pull always --rm --interactive \\
     --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
     --env AGENT_UUID="${{AGENT_UUID}}" \\
     --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
@@ -929,7 +1001,14 @@ def generate_docker_command(agent_type, scan_path, application_name, scan_space_
     --path /scan \\
     --scan-space-name "{scan_space_name}" \\
     --rescan \\
-    --expunge-scan-sessions"""
+    --expunge-scan-sessions
+```
+
+## Important Notes
+- **Only 3 environment variables are needed for the analyze operation**
+- **Do NOT include JOB_NAME, BUILD_NUMBER, GIT_COMMIT, or GIT_BRANCH for analyze**
+- **These additional variables are only used for build info operations**
+- **Build-related environment variables are only needed for send_build_info operations**"""
 
 
 def generate_file_modifications(ci_platform, agent_type, scan_path, application_name, scan_space_name, server_host, agent_image):
@@ -960,6 +1039,8 @@ def generate_file_modifications(ci_platform, agent_type, scan_path, application_
     }}
     steps {{
         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
+            // CodeLogic analyze operation - only needs basic auth environment variables
+            // Do NOT include JOB_NAME, BUILD_NUMBER, GIT_COMMIT, or GIT_BRANCH for analyze
             sh '''
                 docker run --pull always --rm --interactive \\
                     --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
@@ -1690,11 +1771,13 @@ echo "CodeLogic scan completed successfully"
 
 
 def generate_build_info_config(build_type, log_file_path, job_name, build_number, build_status, ci_platform, output_format):
-    """Generate build information configuration"""
+    """Generate build information configuration with improved accuracy"""
     
     config = f"""# CodeLogic Build Information Configuration
 
 ## Build Type: {build_type.upper()}
+
+**Important**: Build information is sent SEPARATELY from the main scan. This is for collecting build metadata, logs, and Git information to enhance CodeLogic analysis.
 
 """
 
