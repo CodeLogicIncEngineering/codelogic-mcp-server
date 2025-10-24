@@ -7,3 +7,6 @@ alwaysApply: false
 - Model Context Protocol SDK (`mcp[cli]`)
 - HTTPX for API requests
 - Environment variables via dotenv for configuration
+- **NEW**: Docker for CodeLogic agent containerization
+- **NEW**: CI/CD Platform Support: Jenkins (Groovy), GitHub Actions (YAML), Azure DevOps (YAML), GitLab CI (YAML)
+- **NEW**: JSON structured output for AI model file modification

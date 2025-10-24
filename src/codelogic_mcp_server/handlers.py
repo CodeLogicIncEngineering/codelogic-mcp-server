@@ -97,6 +97,95 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["entity_type", "name"],
             },
+        ),
+        types.Tool(
+            name="codelogic-docker-agent",
+            description="Generate Docker agent configurations for CodeLogic scanning in CI/CD pipelines.\n"
+                        "This tool provides AI models with structured data to directly modify CI/CD files.\n"
+                        "Returns specific file paths, line numbers, and exact code modifications.\n"
+                        "Supports Jenkins, GitHub Actions, Azure DevOps, and GitLab CI with actionable file changes.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_type": {
+                        "type": "string",
+                        "description": "Type of CodeLogic agent to configure",
+                        "enum": ["dotnet", "java", "sql", "typescript"]
+                    },
+                    "scan_path": {"type": "string", "description": "Directory path to be scanned (e.g., /path/to/your/code)"},
+                    "application_name": {"type": "string", "description": "Name of the application being scanned"},
+                    "scan_space_name": {"type": "string", "description": "Name of the scan space (e.g., 'Development', 'Production')"},
+                    "ci_platform": {
+                        "type": "string",
+                        "description": "CI/CD platform for which to generate configuration",
+                        "enum": ["jenkins", "github-actions", "azure-devops", "gitlab", "generic"]
+                    },
+                    "include_build_info": {"type": "boolean", "description": "Whether to include build information sending capabilities", "default": True},
+                },
+                "required": ["agent_type", "scan_path", "application_name"],
+            },
+        ),
+        types.Tool(
+            name="codelogic-build-info",
+            description="Generate build information and send commands for CodeLogic integration.\n"
+                        "This tool provides AI models with specific prompts to modify CI/CD files for build information collection.\n"
+                        "Includes code snippets, environment variable setup, and file modification examples.\n"
+                        "Supports Git info, build logs, and metadata collection across all major CI/CD platforms.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "build_type": {
+                        "type": "string",
+                        "description": "Type of build information to send",
+                        "enum": ["git-info", "build-log", "metadata", "all"]
+                    },
+                    "log_file_path": {"type": "string", "description": "Path to build log file (optional)"},
+                    "job_name": {"type": "string", "description": "CI/CD job name (optional)"},
+                    "build_number": {"type": "string", "description": "Build number (optional)"},
+                    "build_status": {"type": "string", "description": "Build status (SUCCESS, FAILURE, etc.) (optional)"},
+                    "ci_platform": {"type": "string", "description": "CI/CD platform (jenkins, github-actions, etc.) (optional)"},
+                    "output_format": {
+                        "type": "string",
+                        "description": "Output format for the generated commands",
+                        "enum": ["docker", "standalone", "jenkins", "yaml"]
+                    },
+                },
+                "required": ["build_type"],
+            },
+        ),
+        types.Tool(
+            name="codelogic-pipeline-helper",
+            description="Generate complete CI/CD pipeline configurations for CodeLogic integration.\n"
+                        "This tool provides AI models with specific prompts and code snippets to modify existing CI/CD files.\n"
+                        "Includes step-by-step modification guides, before/after examples, and implementation templates.\n"
+                        "Supports Jenkins, GitHub Actions, Azure DevOps, and GitLab CI with actionable file modification prompts.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "ci_platform": {
+                        "type": "string",
+                        "description": "CI/CD platform for which to generate pipeline",
+                        "enum": ["jenkins", "github-actions", "azure-devops", "gitlab"]
+                    },
+                    "agent_type": {
+                        "type": "string",
+                        "description": "Type of CodeLogic agent to use",
+                        "enum": ["dotnet", "java", "sql", "typescript"]
+                    },
+                    "scan_triggers": {
+                        "type": "array",
+                        "description": "Git branches or events that should trigger scanning",
+                        "items": {"type": "string"}
+                    },
+                    "include_notifications": {"type": "boolean", "description": "Whether to include notification configurations", "default": True},
+                    "scan_space_strategy": {
+                        "type": "string",
+                        "description": "Strategy for managing scan spaces",
+                        "enum": ["unique-per-branch", "shared-development", "environment-based"]
+                    },
+                },
+                "required": ["ci_platform", "agent_type"],
+            },
         )
     ]
 
@@ -114,6 +203,12 @@ async def handle_call_tool(
             return await handle_method_impact(arguments)
         elif name == "codelogic-database-impact":
             return await handle_database_impact(arguments)
+        elif name == "codelogic-docker-agent":
+            return await handle_docker_agent(arguments)
+        elif name == "codelogic-build-info":
+            return await handle_build_info(arguments)
+        elif name == "codelogic-pipeline-helper":
+            return await handle_pipeline_helper(arguments)
         else:
             sys.stderr.write(f"Unknown tool: {name}\n")
             raise ValueError(f"Unknown tool: {name}")
@@ -600,3 +695,1889 @@ async def handle_database_impact(arguments: dict | None) -> list[types.TextConte
             text=combined_report
         )
     ]
+
+
+async def handle_docker_agent(arguments: dict | None) -> list[types.TextContent]:
+    """Handle the codelogic-docker-agent tool for DevOps Docker agent configuration"""
+    if not arguments:
+        sys.stderr.write("Missing arguments\n")
+        raise ValueError("Missing arguments")
+
+    agent_type = arguments.get("agent_type")
+    scan_path = arguments.get("scan_path")
+    application_name = arguments.get("application_name")
+    scan_space_name = arguments.get("scan_space_name", "Development")
+    ci_platform = arguments.get("ci_platform", "generic")
+    include_build_info = arguments.get("include_build_info", True)
+
+    if not agent_type or not scan_path or not application_name:
+        sys.stderr.write("Agent type, scan path, and application name are required\n")
+        raise ValueError("Agent type, scan path, and application name are required")
+
+    # Get server configuration
+    server_host = os.getenv("CODELOGIC_SERVER_HOST", "https://your-instance.app.codelogic.com")
+    
+    # Generate Docker agent configuration based on agent type
+    agent_config = generate_docker_agent_config(
+        agent_type, scan_path, application_name, scan_space_name, 
+        ci_platform, include_build_info, server_host
+    )
+
+    return [
+        types.TextContent(
+            type="text",
+            text=agent_config
+        )
+    ]
+
+
+async def handle_build_info(arguments: dict | None) -> list[types.TextContent]:
+    """Handle the codelogic-build-info tool for build information management"""
+    if not arguments:
+        sys.stderr.write("Missing arguments\n")
+        raise ValueError("Missing arguments")
+
+    build_type = arguments.get("build_type")
+    log_file_path = arguments.get("log_file_path")
+    job_name = arguments.get("job_name")
+    build_number = arguments.get("build_number")
+    build_status = arguments.get("build_status")
+    ci_platform = arguments.get("ci_platform")
+    output_format = arguments.get("output_format", "docker")
+
+    if not build_type:
+        sys.stderr.write("Build type is required\n")
+        raise ValueError("Build type is required")
+
+    # Generate build info configuration
+    build_info_config = generate_build_info_config(
+        build_type, log_file_path, job_name, build_number, 
+        build_status, ci_platform, output_format
+    )
+
+    return [
+        types.TextContent(
+            type="text",
+            text=build_info_config
+        )
+    ]
+
+
+async def handle_pipeline_helper(arguments: dict | None) -> list[types.TextContent]:
+    """Handle the codelogic-pipeline-helper tool for complete CI/CD pipeline configuration"""
+    if not arguments:
+        sys.stderr.write("Missing arguments\n")
+        raise ValueError("Missing arguments")
+
+    ci_platform = arguments.get("ci_platform")
+    agent_type = arguments.get("agent_type")
+    scan_triggers = arguments.get("scan_triggers", ["main", "develop"])
+    include_notifications = arguments.get("include_notifications", True)
+    scan_space_strategy = arguments.get("scan_space_strategy", "unique-per-branch")
+
+    if not ci_platform or not agent_type:
+        sys.stderr.write("CI platform and agent type are required\n")
+        raise ValueError("CI platform and agent type are required")
+
+    # Generate pipeline configuration
+    pipeline_config = generate_pipeline_config(
+        ci_platform, agent_type, scan_triggers, 
+        include_notifications, scan_space_strategy
+    )
+
+    return [
+        types.TextContent(
+            type="text",
+            text=pipeline_config
+        )
+    ]
+
+
+def generate_docker_agent_config(agent_type, scan_path, application_name, scan_space_name, ci_platform, include_build_info, server_host):
+    """Generate Docker agent configuration with AI-actionable prompts for CI/CD file modification"""
+    
+    # Agent type mappings
+    agent_images = {
+        "dotnet": "codelogic_dotnet",
+        "java": "codelogic_java", 
+        "sql": "codelogic_sql",
+        "typescript": "codelogic_typescript"
+    }
+    
+    agent_image = agent_images.get(agent_type, "codelogic_dotnet")
+    
+    # Generate structured data for AI models to directly modify CI/CD files
+    structured_config = {
+        "target_files": get_target_files(ci_platform),
+        "environment_variables": {
+            "CODELOGIC_HOST": server_host,
+            "AGENT_UUID": "your-agent-uuid",
+            "AGENT_PASSWORD": "your-agent-password"
+        },
+        "docker_command": generate_docker_command(agent_type, scan_path, application_name, scan_space_name, server_host, agent_image),
+        "file_modifications": generate_file_modifications(ci_platform, agent_type, scan_path, application_name, scan_space_name, server_host, agent_image),
+        "setup_instructions": generate_setup_instructions(ci_platform),
+        "validation_checks": generate_validation_checks(ci_platform)
+    }
+    
+    config = f"""# CodeLogic {agent_type.upper()} Docker Agent - AI File Modification Guide
+
+## 🎯 AI Model Instructions
+
+**Use the structured data below to directly modify CI/CD files in the repository.**
+
+### Target Files to Modify
+{format_target_files(structured_config['target_files'])}
+
+### Environment Variables to Add
+{format_environment_variables(structured_config['environment_variables'])}
+
+### Docker Command Template
+```bash
+{structured_config['docker_command']}
+```
+
+### Specific File Modifications
+{format_file_modifications(structured_config['file_modifications'])}
+
+### Setup Instructions
+{format_setup_instructions(structured_config['setup_instructions'])}
+
+### Validation Checks
+{format_validation_checks(structured_config['validation_checks'])}
+
+## 📋 Structured Data for AI Processing
+
+```json
+{json.dumps(structured_config, indent=2)}
+```
+
+"""
+
+    # Add platform-specific configurations
+    if ci_platform == "jenkins":
+        config += generate_jenkins_config(agent_type, scan_path, application_name, scan_space_name, include_build_info, server_host)
+    elif ci_platform == "github-actions":
+        config += generate_github_actions_config(agent_type, scan_path, application_name, scan_space_name, include_build_info, server_host)
+    elif ci_platform == "azure-devops":
+        config += generate_azure_devops_config(agent_type, scan_path, application_name, scan_space_name, include_build_info, server_host)
+    elif ci_platform == "gitlab":
+        config += generate_gitlab_config(agent_type, scan_path, application_name, scan_space_name, include_build_info, server_host)
+    else:
+        config += generate_generic_config(agent_type, scan_path, application_name, scan_space_name, include_build_info, server_host)
+
+    # Add build info section if requested
+    if include_build_info:
+        config += f"""
+
+## Build Information Integration
+
+To send build information to CodeLogic, add this step after your scan:
+
+```bash
+# Send build information
+docker run --rm \\
+    --env CODELOGIC_HOST="{server_host}" \\
+    --env AGENT_UUID="${{AGENT_UUID}}" \\
+    --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+    --volume "{scan_path}:/scan" \\
+    --volume "${{PWD}}/logs:/log_file_path" \\
+    {server_host}/{agent_image}:latest send_build_info \\
+    --log-file="/log_file_path/build.log"
+```
+
+## Best Practices
+
+1. **Scan Space Management**: Use unique scan spaces per branch to avoid conflicts
+2. **Error Handling**: Always use `--rescan` and `--expunge-scan-sessions` for CI/CD
+3. **Security**: Store credentials as environment variables, never in code
+4. **Performance**: Use `--pull always` to ensure latest agent version
+5. **Logging**: Mount log directories for build information collection
+
+## Troubleshooting
+
+- **Permission Issues**: Ensure Docker has access to scan directory
+- **Network Issues**: Verify CodeLogic server connectivity
+- **Credential Issues**: Check AGENT_UUID and AGENT_PASSWORD are correct
+- **Scan Failures**: Review agent logs for specific error messages
+"""
+
+    return config
+
+
+def get_target_files(ci_platform):
+    """Get target files for each CI/CD platform"""
+    platform_files = {
+        "jenkins": ["Jenkinsfile", ".jenkins/pipeline.groovy"],
+        "github-actions": [".github/workflows/*.yml"],
+        "azure-devops": ["azure-pipelines.yml", ".azure-pipelines/*.yml"],
+        "gitlab": [".gitlab-ci.yml"],
+        "generic": ["*.yml", "*.yaml", "Jenkinsfile", "Dockerfile"]
+    }
+    return platform_files.get(ci_platform, platform_files["generic"])
+
+
+def generate_docker_command(agent_type, scan_path, application_name, scan_space_name, server_host, agent_image):
+    """Generate the Docker command template"""
+    return f"""docker run --pull always --rm --interactive \\
+    --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+    --env AGENT_UUID="${{AGENT_UUID}}" \\
+    --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+    --volume "{scan_path}:/scan" \\
+    {server_host}/{agent_image}:latest analyze \\
+    --application "{application_name}" \\
+    --path /scan \\
+    --scan-space-name "{scan_space_name}" \\
+    --rescan \\
+    --expunge-scan-sessions"""
+
+
+def generate_file_modifications(ci_platform, agent_type, scan_path, application_name, scan_space_name, server_host, agent_image):
+    """Generate specific file modifications for each platform"""
+    modifications = {
+        "jenkins": {
+            "file": "Jenkinsfile",
+            "modifications": [
+                {
+                    "type": "add_environment",
+                    "location": "environment block",
+                    "content": f"""environment {{
+    CODELOGIC_HOST = '{server_host}'
+    AGENT_UUID = credentials('codelogic-agent-uuid')
+    AGENT_PASSWORD = credentials('codelogic-agent-password')
+}}"""
+                },
+                {
+                    "type": "add_stage",
+                    "location": "after build stages",
+                    "content": f"""stage('CodeLogic Scan') {{
+    when {{
+        anyOf {{
+            branch 'main'
+            branch 'develop'
+            branch 'feature/*'
+        }}
+    }}
+    steps {{
+        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
+            sh '''
+                docker run --pull always --rm --interactive \\
+                    --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                    --env AGENT_UUID="${{AGENT_UUID}}" \\
+                    --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                    --volume "${{WORKSPACE}}:/scan" \\
+                    ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest analyze \\
+                    --application "{application_name}" \\
+                    --path /scan \\
+                    --scan-space-name "{scan_space_name}" \\
+                    --rescan \\
+                    --expunge-scan-sessions
+            '''
+        }}
+    }}
+}}"""
+                }
+            ]
+        },
+        "github-actions": {
+            "file": ".github/workflows/codelogic-scan.yml",
+            "modifications": [
+                {
+                    "type": "create_file",
+                    "content": f"""name: CodeLogic Scan
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  codelogic-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+      
+    - name: CodeLogic Scan
+      run: |
+        docker run --pull always --rm \\
+          --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
+          --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
+          --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
+          --volume "${{{{ github.workspace }}}}:/scan" \\
+          ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest analyze \\
+          --application "{application_name}" \\
+          --path /scan \\
+          --scan-space-name "{scan_space_name}" \\
+          --rescan \\
+          --expunge-scan-sessions
+      continue-on-error: true"""
+                }
+            ]
+        }
+    }
+    return modifications.get(ci_platform, {})
+
+
+def generate_setup_instructions(ci_platform):
+    """Generate setup instructions for each platform"""
+    instructions = {
+        "jenkins": [
+            "Go to Jenkins → Manage Jenkins → Manage Credentials",
+            "Add Secret Text credentials: codelogic-agent-uuid, codelogic-agent-password",
+            "Install Docker Pipeline Plugin if not already installed"
+        ],
+        "github-actions": [
+            "Go to repository Settings → Secrets and variables → Actions",
+            "Add repository secrets: CODELOGIC_HOST, AGENT_UUID, AGENT_PASSWORD",
+            "Ensure Docker is available in runner (default for ubuntu-latest)"
+        ],
+        "azure-devops": [
+            "Go to pipeline variables and add: codelogicAgentUuid, codelogicAgentPassword",
+            "Mark variables as secret",
+            "Ensure Docker task is available"
+        ],
+        "gitlab": [
+            "Go to Settings → CI/CD → Variables",
+            "Add variables: AGENT_UUID, AGENT_PASSWORD",
+            "Mark as protected and masked",
+            "Ensure Docker-in-Docker is enabled"
+        ]
+    }
+    return instructions.get(ci_platform, [])
+
+
+def generate_validation_checks(ci_platform):
+    """Generate validation checks for each platform"""
+    checks = {
+        "jenkins": [
+            "Verify credentials are properly configured",
+            "Test Docker command manually",
+            "Check Jenkins agent has Docker access"
+        ],
+        "github-actions": [
+            "Verify secrets are set correctly",
+            "Test workflow runs without errors",
+            "Check Docker is available in runner"
+        ],
+        "azure-devops": [
+            "Verify variables are marked as secret",
+            "Test Docker task execution",
+            "Check pipeline permissions"
+        ],
+        "gitlab": [
+            "Verify variables are protected and masked",
+            "Test Docker-in-Docker functionality",
+            "Check pipeline permissions"
+        ]
+    }
+    return checks.get(ci_platform, [])
+
+
+def format_target_files(target_files):
+    """Format target files for display"""
+    if isinstance(target_files, list):
+        return "\n".join([f"- `{file}`" for file in target_files])
+    return f"- `{target_files}`"
+
+
+def format_environment_variables(env_vars):
+    """Format environment variables for display"""
+    return "\n".join([f"- `{key}`: {value}" for key, value in env_vars.items()])
+
+
+def format_file_modifications(modifications):
+    """Format file modifications for display"""
+    if not modifications:
+        return "No specific modifications required."
+    
+    result = []
+    for mod in modifications.get('modifications', []):
+        result.append(f"**{mod['type'].replace('_', ' ').title()}**: {mod.get('location', 'N/A')}")
+        result.append(f"```\n{mod['content']}\n```")
+    
+    return "\n".join(result)
+
+
+def format_setup_instructions(instructions):
+    """Format setup instructions for display"""
+    return "\n".join([f"{i+1}. {instruction}" for i, instruction in enumerate(instructions)])
+
+
+def format_validation_checks(checks):
+    """Format validation checks for display"""
+    return "\n".join([f"- {check}" for check in checks])
+
+
+def generate_jenkins_config(agent_type, scan_path, application_name, scan_space_name, include_build_info, server_host):
+    """Generate Jenkins-specific configuration with AI modification prompts"""
+    return f"""
+### 🎯 Jenkins File Modification Guide
+
+**AI Prompt: "Modify the Jenkinsfile to add CodeLogic scanning"**
+
+#### Step 1: Add Environment Variables
+Add this to the `environment` block in your Jenkinsfile:
+
+```groovy
+environment {{
+    CODELOGIC_HOST = '{server_host}'
+    AGENT_UUID = credentials('codelogic-agent-uuid')
+    AGENT_PASSWORD = credentials('codelogic-agent-password')
+}}
+```
+
+#### Step 2: Add CodeLogic Scan Stage
+Insert this stage after your build stages:
+
+```groovy
+stage('CodeLogic Scan') {{
+    when {{
+        anyOf {{
+            branch 'main'
+            branch 'develop'
+            branch 'feature/*'
+        }}
+    }}
+    steps {{
+        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
+            sh '''
+                docker run --pull always --rm --interactive \\
+                    --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                    --env AGENT_UUID="${{AGENT_UUID}}" \\
+                    --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                    --volume "${{WORKSPACE}}:/scan" \\
+                    ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest analyze \\
+                    --application "{application_name}" \\
+                    --path /scan \\
+                    --scan-space-name "{scan_space_name}" \\
+                    --rescan \\
+                    --expunge-scan-sessions
+            '''
+        }}
+    }}
+}}
+```
+
+#### Step 3: Add Build Info Stage (Optional)
+Add this stage for build information collection:
+
+```groovy
+stage('Send Build Info') {{
+    when {{
+        anyOf {{
+            branch 'main'
+            branch 'develop'
+        }}
+    }}
+    steps {{
+        sh '''
+            docker run --rm \\
+                --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                --env AGENT_UUID="${{AGENT_UUID}}" \\
+                --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                --volume "${{WORKSPACE}}:/scan" \\
+                --volume "${{WORKSPACE}}/logs:/log_file_path" \\
+                ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
+                --log-file="/log_file_path/build.log"
+        '''
+    }}
+}}
+```
+
+#### Step 4: Add Post-Build Actions
+Add this to the `post` block:
+
+```groovy
+post {{
+    always {{
+        archiveArtifacts artifacts: 'logs/**', allowEmptyArchive: true
+    }}
+}}
+```
+
+### 🔧 Jenkins Setup Instructions
+
+**AI Prompt: "Set up Jenkins credentials for CodeLogic"**
+
+1. **Add Credentials**:
+   - Go to Jenkins → Manage Jenkins → Manage Credentials
+   - Add Secret Text credentials:
+     - ID: `codelogic-agent-uuid`
+     - Secret: Your CodeLogic agent UUID
+   - Add another Secret Text credential:
+     - ID: `codelogic-agent-password` 
+     - Secret: Your CodeLogic agent password
+
+2. **Install Required Plugins**:
+   - Docker Pipeline Plugin
+   - Credentials Plugin
+
+### 📋 Complete Jenkinsfile Template
+
+**AI Prompt: "Create a complete Jenkinsfile with CodeLogic integration"**
+
+```groovy
+pipeline {{
+    agent any
+    
+    environment {{
+        CODELOGIC_HOST = '{server_host}'
+        AGENT_UUID = credentials('codelogic-agent-uuid')
+        AGENT_PASSWORD = credentials('codelogic-agent-password')
+    }}
+    
+    stages {{
+        stage('Build') {{
+            steps {{
+                // Your existing build steps
+                echo 'Building application...'
+            }}
+        }}
+        
+        stage('Test') {{
+            steps {{
+                // Your existing test steps
+                echo 'Running tests...'
+            }}
+        }}
+        
+        stage('CodeLogic Scan') {{
+            when {{
+                anyOf {{
+                    branch 'main'
+                    branch 'develop'
+                    branch 'feature/*'
+                }}
+            }}
+            steps {{
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
+                    sh '''
+                        docker run --pull always --rm --interactive \\
+                            --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                            --env AGENT_UUID="${{AGENT_UUID}}" \\
+                            --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                            --volume "${{WORKSPACE}}:/scan" \\
+                            ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest analyze \\
+                            --application "{application_name}" \\
+                            --path /scan \\
+                            --scan-space-name "{scan_space_name}" \\
+                            --rescan \\
+                            --expunge-scan-sessions
+                    '''
+                }}
+            }}
+        }}
+        
+        stage('Send Build Info') {{
+            when {{
+                anyOf {{
+                    branch 'main'
+                    branch 'develop'
+                }}
+            }}
+            steps {{
+                sh '''
+                    docker run --rm \\
+                        --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                        --env AGENT_UUID="${{AGENT_UUID}}" \\
+                        --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                        --volume "${{WORKSPACE}}:/scan" \\
+                        --volume "${{WORKSPACE}}/logs:/log_file_path" \\
+                        ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
+                        --log-file="/log_file_path/build.log"
+                '''
+            }}
+        }}
+    }}
+    
+    post {{
+        always {{
+            archiveArtifacts artifacts: 'logs/**', allowEmptyArchive: true
+        }}
+        success {{
+            echo 'Pipeline completed successfully'
+        }}
+        failure {{
+            echo 'Pipeline failed'
+        }}
+    }}
+}}
+```
+"""
+
+
+def generate_github_actions_config(agent_type, scan_path, application_name, scan_space_name, include_build_info, server_host):
+    """Generate GitHub Actions configuration with AI modification prompts"""
+    return f"""
+### 🎯 GitHub Actions File Modification Guide
+
+**AI Prompt: "Modify GitHub Actions workflow to add CodeLogic scanning"**
+
+#### Step 1: Add Secrets to Repository
+**AI Prompt: "Add CodeLogic secrets to GitHub repository"**
+
+1. Go to repository Settings → Secrets and variables → Actions
+2. Add these repository secrets:
+   - `CODELOGIC_HOST`: {server_host}
+   - `AGENT_UUID`: Your CodeLogic agent UUID
+   - `AGENT_PASSWORD`: Your CodeLogic agent password
+
+#### Step 2: Create or Modify Workflow File
+**AI Prompt: "Create .github/workflows/codelogic-scan.yml with CodeLogic integration"**
+
+Create `.github/workflows/codelogic-scan.yml`:
+
+```yaml
+name: CodeLogic Scan
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  codelogic-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full git history for better analysis
+      
+    - name: CodeLogic Scan
+      run: |
+        docker run --pull always --rm \\
+          --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
+          --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
+          --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
+          --volume "${{{{ github.workspace }}}}:/scan" \\
+          ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest analyze \\
+          --application "{application_name}" \\
+          --path /scan \\
+          --scan-space-name "{scan_space_name}" \\
+          --rescan \\
+          --expunge-scan-sessions
+      continue-on-error: true
+      
+    - name: Send Build Info
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+      run: |
+        docker run --rm \\
+          --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
+          --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
+          --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
+          --volume "${{{{ github.workspace }}}}:/scan" \\
+          --volume "${{{{ github.workspace }}}}/logs:/log_file_path" \\
+          ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest send_build_info \\
+          --log-file="/log_file_path/build.log"
+      continue-on-error: true
+      
+    - name: Upload build logs
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-logs
+        path: logs/
+        retention-days: 30
+```
+
+#### Step 3: Modify Existing Workflow
+**AI Prompt: "Add CodeLogic scanning to existing GitHub Actions workflow"**
+
+If you have an existing workflow, add these steps:
+
+```yaml
+# Add to your existing workflow
+- name: CodeLogic Scan
+  run: |
+    docker run --pull always --rm \\
+      --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
+      --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
+      --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
+      --volume "${{{{ github.workspace }}}}:/scan" \\
+      ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest analyze \\
+      --application "{application_name}" \\
+      --path /scan \\
+      --scan-space-name "{scan_space_name}" \\
+      --rescan \\
+      --expunge-scan-sessions
+  continue-on-error: true
+```
+
+### 🔧 GitHub Actions Setup Instructions
+
+**AI Prompt: "Set up GitHub Actions for CodeLogic integration"**
+
+1. **Repository Secrets**:
+   - Go to repository Settings → Secrets and variables → Actions
+   - Add repository secrets (not environment secrets)
+   - Mark as sensitive data
+
+2. **Workflow Permissions**:
+   - Ensure workflow has necessary permissions
+   - Add `permissions: contents: read` if needed
+
+3. **Docker Support**:
+   - GitHub Actions runners include Docker by default
+   - No additional setup required
+
+### 📋 Complete Workflow Template
+
+**AI Prompt: "Create a complete GitHub Actions workflow with CodeLogic integration"**
+
+```yaml
+name: CI/CD Pipeline with CodeLogic
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '6.0'
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build
+      run: dotnet build --no-restore
+      
+    - name: Test
+      run: dotnet test --no-build --verbosity normal
+      
+    - name: CodeLogic Scan
+      run: |
+        docker run --pull always --rm \\
+          --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
+          --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
+          --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
+          --volume "${{{{ github.workspace }}}}:/scan" \\
+          ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest analyze \\
+          --application "{application_name}" \\
+          --path /scan \\
+          --scan-space-name "{scan_space_name}" \\
+          --rescan \\
+          --expunge-scan-sessions
+      continue-on-error: true
+      
+    - name: Send Build Info
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+      run: |
+        docker run --rm \\
+          --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
+          --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
+          --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
+          --volume "${{{{ github.workspace }}}}:/scan" \\
+          --volume "${{{{ github.workspace }}}}/logs:/log_file_path" \\
+          ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest send_build_info \\
+          --log-file="/log_file_path/build.log"
+      continue-on-error: true
+      
+    - name: Upload build logs
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-logs
+        path: logs/
+        retention-days: 30
+```
+"""
+
+
+def generate_azure_devops_config(agent_type, scan_path, application_name, scan_space_name, include_build_info, server_host):
+    """Generate Azure DevOps configuration"""
+    return f"""
+### Azure DevOps Pipeline
+
+Create `azure-pipelines.yml`:
+
+```yaml
+trigger:
+- main
+- develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  codelogicHost: '{server_host}'
+  agentUuid: $(codelogicAgentUuid)
+  agentPassword: $(codelogicAgentPassword)
+
+stages:
+- stage: CodeLogicScan
+  displayName: 'CodeLogic Scan'
+  jobs:
+  - job: Scan
+    displayName: 'Run CodeLogic Scan'
+    steps:
+    - task: Docker@2
+      displayName: 'CodeLogic Scan'
+      inputs:
+        command: 'run'
+        arguments: |
+          --pull always --rm \\
+          --env CODELOGIC_HOST="$(codelogicHost)" \\
+          --env AGENT_UUID="$(agentUuid)" \\
+          --env AGENT_PASSWORD="$(agentPassword)" \\
+          --volume "$(Build.SourcesDirectory):/scan" \\
+          $(codelogicHost)/codelogic_{agent_type}:latest analyze \\
+          --application "{application_name}" \\
+          --path /scan \\
+          --scan-space-name "{scan_space_name}" \\
+          --rescan \\
+          --expunge-scan-sessions
+      continueOnError: true
+      
+    - task: Docker@2
+      displayName: 'Send Build Info'
+      condition: and(succeededOrFailed(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+      inputs:
+        command: 'run'
+        arguments: |
+          --rm \\
+          --env CODELOGIC_HOST="$(codelogicHost)" \\
+          --env AGENT_UUID="$(agentUuid)" \\
+          --env AGENT_PASSWORD="$(agentPassword)" \\
+          --volume "$(Build.SourcesDirectory):/scan" \\
+          --volume "$(Build.SourcesDirectory)/logs:/log_file_path" \\
+          $(codelogicHost)/codelogic_{agent_type}:latest send_build_info \\
+          --log-file="/log_file_path/build.log"
+```
+
+### Azure DevOps Variables
+
+Add these variables to your pipeline:
+- `codelogicAgentUuid`: Your agent UUID (mark as secret)
+- `codelogicAgentPassword`: Your agent password (mark as secret)
+"""
+
+
+def generate_gitlab_config(agent_type, scan_path, application_name, scan_space_name, include_build_info, server_host):
+    """Generate GitLab CI configuration"""
+    return f"""
+### GitLab CI Configuration
+
+Create `.gitlab-ci.yml`:
+
+```yaml
+stages:
+  - scan
+  - build-info
+
+variables:
+  CODELOGIC_HOST: "{server_host}"
+  DOCKER_DRIVER: overlay2
+
+codelogic_scan:
+  stage: scan
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker info
+  script:
+    - |
+      docker run --pull always --rm \\
+        --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+        --env AGENT_UUID="$AGENT_UUID" \\
+        --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+        --volume "$CI_PROJECT_DIR:/scan" \\
+        $CODELOGIC_HOST/codelogic_{agent_type}:latest analyze \\
+        --application "{application_name}" \\
+        --path /scan \\
+        --scan-space-name "{scan_space_name}" \\
+        --rescan \\
+        --expunge-scan-sessions
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH =~ /^feature\\/.*$/
+  allow_failure: true
+
+send_build_info:
+  stage: build-info
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - |
+      docker run --rm \\
+        --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+        --env AGENT_UUID="$AGENT_UUID" \\
+        --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+        --volume "$CI_PROJECT_DIR:/scan" \\
+        --volume "$CI_PROJECT_DIR/logs:/log_file_path" \\
+        $CODELOGIC_HOST/codelogic_{agent_type}:latest send_build_info \\
+        --log-file="/log_file_path/build.log"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+  allow_failure: true
+```
+
+### GitLab Variables
+
+Add these variables to your project:
+- `AGENT_UUID`: Your agent UUID (mark as protected and masked)
+- `AGENT_PASSWORD`: Your agent password (mark as protected and masked)
+"""
+
+
+def generate_generic_config(agent_type, scan_path, application_name, scan_space_name, include_build_info, server_host):
+    """Generate generic configuration for any CI/CD platform"""
+    return f"""
+### Generic CI/CD Configuration
+
+For any CI/CD platform, use these environment variables:
+
+```bash
+export CODELOGIC_HOST="{server_host}"
+export AGENT_UUID="your-agent-uuid"
+export AGENT_PASSWORD="your-agent-password"
+```
+
+### Shell Script Example
+
+Create `codelogic-scan.sh`:
+
+```bash
+#!/bin/bash
+set -e
+
+# Configuration
+CODELOGIC_HOST="${{CODELOGIC_HOST:-{server_host}}}"
+AGENT_UUID="${{AGENT_UUID}}"
+AGENT_PASSWORD="${{AGENT_PASSWORD}}"
+SCAN_PATH="${{SCAN_PATH:-{scan_path}}}"
+APPLICATION_NAME="${{APPLICATION_NAME:-{application_name}}}"
+SCAN_SPACE="${{SCAN_SPACE:-{scan_space_name}}}"
+
+# Run CodeLogic scan
+echo "Starting CodeLogic {agent_type} scan..."
+docker run --pull always --rm --interactive \\
+    --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+    --env AGENT_UUID="$AGENT_UUID" \\
+    --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+    --volume "$SCAN_PATH:/scan" \\
+    $CODELOGIC_HOST/codelogic_{agent_type}:latest analyze \\
+    --application "$APPLICATION_NAME" \\
+    --path /scan \\
+    --scan-space-name "$SCAN_SPACE" \\
+    --rescan \\
+    --expunge-scan-sessions
+
+echo "CodeLogic scan completed successfully"
+"""
+
+
+def generate_build_info_config(build_type, log_file_path, job_name, build_number, build_status, ci_platform, output_format):
+    """Generate build information configuration"""
+    
+    config = f"""# CodeLogic Build Information Configuration
+
+## Build Type: {build_type.upper()}
+
+"""
+
+    if build_type == "git-info":
+        config += generate_git_info_config(output_format)
+    elif build_type == "build-log":
+        config += generate_build_log_config(log_file_path, output_format)
+    elif build_type == "metadata":
+        config += generate_metadata_config(job_name, build_number, build_status, ci_platform, output_format)
+    else:  # all
+        config += generate_all_build_info_config(log_file_path, job_name, build_number, build_status, ci_platform, output_format)
+
+    return config
+
+
+def generate_git_info_config(output_format):
+    """Generate Git information configuration"""
+    if output_format == "docker":
+        return """
+### Docker Command for Git Information
+
+```bash
+# Basic Git info collection
+docker run --rm \\
+    --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+    --env AGENT_UUID="$AGENT_UUID" \\
+    --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+    --volume "$PWD:/scan" \\
+    your-codelogic-image send_build_info \\
+    --log-file="/scan/build.log"
+```
+
+### Environment Variables for Git Context
+
+```bash
+export GIT_COMMIT=$(git rev-parse HEAD)
+export GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+export GIT_AUTHOR=$(git log -1 --pretty=format:'%an')
+export GIT_MESSAGE=$(git log -1 --pretty=format:'%s')
+```
+"""
+    else:
+        return """
+### Standalone Git Information Collection
+
+```bash
+#!/bin/bash
+# Collect Git information
+GIT_COMMIT=$(git rev-parse HEAD)
+GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+GIT_AUTHOR=$(git log -1 --pretty=format:'%an')
+GIT_MESSAGE=$(git log -1 --pretty=format:'%s')
+
+# Send to CodeLogic
+./send_build_info.sh \\
+    --agent-uuid="$AGENT_UUID" \\
+    --agent-password="$AGENT_PASSWORD" \\
+    --server="$CODELOGIC_HOST" \\
+    --log-file="build.log"
+```
+"""
+
+
+def generate_build_log_config(log_file_path, output_format):
+    """Generate build log configuration"""
+    log_path = log_file_path or "/path/to/build.log"
+    
+    if output_format == "docker":
+        return f"""
+### Docker Command for Build Logs
+
+```bash
+# Mount log directory and send build logs
+docker run --rm \\
+    --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+    --env AGENT_UUID="$AGENT_UUID" \\
+    --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+    --volume "$PWD:/scan" \\
+    --volume "/path/to/logs:/log_file_path" \\
+    your-codelogic-image send_build_info \\
+    --log-file="/log_file_path/{log_path.split('/')[-1]}"
+```
+
+### Log File Management
+
+```bash
+# Create log directory
+mkdir -p logs
+
+# Capture build output
+your-build-command 2>&1 | tee logs/build.log
+
+# Send to CodeLogic
+docker run --rm \\
+    --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+    --env AGENT_UUID="$AGENT_UUID" \\
+    --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+    --volume "$PWD:/scan" \\
+    --volume "$PWD/logs:/log_file_path" \\
+    your-codelogic-image send_build_info \\
+    --log-file="/log_file_path/build.log"
+```
+"""
+    else:
+        return f"""
+### Standalone Build Log Collection
+
+```bash
+#!/bin/bash
+# Capture build logs
+your-build-command 2>&1 | tee {log_path}
+
+# Send to CodeLogic
+./send_build_info.sh \\
+    --agent-uuid="$AGENT_UUID" \\
+    --agent-password="$AGENT_PASSWORD" \\
+    --server="$CODELOGIC_HOST" \\
+    --log-file="{log_path}"
+```
+
+### Advanced Log Management
+
+```bash
+# With log rotation and compression
+./send_build_info.sh \\
+    --agent-uuid="$AGENT_UUID" \\
+    --agent-password="$AGENT_PASSWORD" \\
+    --server="$CODELOGIC_HOST" \\
+    --log-file="{log_path}" \\
+    --log-lines=1000 \\
+    --timeout=60
+```
+"""
+
+
+def generate_metadata_config(job_name, build_number, build_status, ci_platform, output_format):
+    """Generate metadata configuration"""
+    job = job_name or "build-job"
+    build_num = build_number or "123"
+    status = build_status or "SUCCESS"
+    platform = ci_platform or "jenkins"
+    
+    if output_format == "docker":
+        return f"""
+### Docker Command for Build Metadata
+
+```bash
+# Send build metadata
+docker run --rm \\
+    --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+    --env AGENT_UUID="$AGENT_UUID" \\
+    --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+    --volume "$PWD:/scan" \\
+    your-codelogic-image send_build_info \\
+    --log-file="/scan/build.log"
+```
+
+### CI/CD Platform Specific Metadata
+
+#### Jenkins
+```bash
+export JOB_NAME="{job}"
+export BUILD_NUMBER="{build_num}"
+export BUILD_STATUS="{status}"
+```
+
+#### GitHub Actions
+```bash
+export GITHUB_REPOSITORY="${{{{ github.repository }}}}"
+export GITHUB_SHA="${{{{ github.sha }}}}"
+export GITHUB_REF="${{{{ github.ref }}}}"
+```
+
+#### Azure DevOps
+```bash
+export BUILD_BUILDID="${{{{ build.buildId }}}}"
+export BUILD_DEFINITIONNAME="${{{{ build.definition.name }}}}"
+export BUILD_REASON="${{{{ build.reason }}}}"
+```
+"""
+    else:
+        return f"""
+### Standalone Metadata Collection
+
+```bash
+#!/bin/bash
+# Set build metadata
+export JOB_NAME="{job}"
+export BUILD_NUMBER="{build_num}"
+export BUILD_STATUS="{status}"
+export CI_PLATFORM="{platform}"
+
+# Send to CodeLogic
+./send_build_info.sh \\
+    --agent-uuid="$AGENT_UUID" \\
+    --agent-password="$AGENT_PASSWORD" \\
+    --server="$CODELOGIC_HOST" \\
+    --log-file="build.log" \\
+    --job-name="$JOB_NAME" \\
+    --build-number="$BUILD_NUMBER"
+```
+"""
+
+
+def generate_all_build_info_config(log_file_path, job_name, build_number, build_status, ci_platform, output_format):
+    """Generate comprehensive build information configuration"""
+    return f"""
+# Complete CodeLogic Build Information Integration
+
+## Comprehensive Setup
+
+This configuration includes Git information, build logs, and metadata collection.
+
+### Environment Setup
+
+```bash
+# CodeLogic Configuration
+export CODELOGIC_HOST="https://your-instance.app.codelogic.com"
+export AGENT_UUID="your-agent-uuid"
+export AGENT_PASSWORD="your-agent-password"
+
+# Build Information
+export JOB_NAME="{job_name or 'build-job'}"
+export BUILD_NUMBER="{build_number or '123'}"
+export BUILD_STATUS="{build_status or 'SUCCESS'}"
+export CI_PLATFORM="{ci_platform or 'jenkins'}"
+
+# Git Information
+export GIT_COMMIT=$(git rev-parse HEAD)
+export GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+export GIT_AUTHOR=$(git log -1 --pretty=format:'%an')
+export GIT_MESSAGE=$(git log -1 --pretty=format:'%s')
+```
+
+### Complete Docker Command
+
+```bash
+# Full build information collection
+docker run --rm \\
+    --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+    --env AGENT_UUID="$AGENT_UUID" \\
+    --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+    --env JOB_NAME="$JOB_NAME" \\
+    --env BUILD_NUMBER="$BUILD_NUMBER" \\
+    --env BUILD_STATUS="$BUILD_STATUS" \\
+    --env GIT_COMMIT="$GIT_COMMIT" \\
+    --env GIT_BRANCH="$GIT_BRANCH" \\
+    --volume "$PWD:/scan" \\
+    --volume "$PWD/logs:/log_file_path" \\
+    your-codelogic-image send_build_info \\
+    --log-file="/log_file_path/{log_file_path or 'build.log'}" \\
+    --job-name="$JOB_NAME" \\
+    --build-number="$BUILD_NUMBER"
+```
+
+### CI/CD Platform Integration
+
+#### Jenkins Pipeline
+```groovy
+pipeline {{
+    environment {{
+        CODELOGIC_HOST = 'https://your-instance.app.codelogic.com'
+        AGENT_UUID = credentials('codelogic-agent-uuid')
+        AGENT_PASSWORD = credentials('codelogic-agent-password')
+    }}
+    
+    stages {{
+        stage('Build') {{
+            steps {{
+                sh 'your-build-command 2>&1 | tee logs/build.log'
+            }}
+        }}
+        
+        stage('CodeLogic Build Info') {{
+            steps {{
+                sh '''
+                    docker run --rm \\
+                        --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                        --env AGENT_UUID="${{AGENT_UUID}}" \\
+                        --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                        --volume "${{WORKSPACE}}:/scan" \\
+                        --volume "${{WORKSPACE}}/logs:/log_file_path" \\
+                        ${{CODELOGIC_HOST}}/codelogic_dotnet:latest send_build_info \\
+                        --log-file="/log_file_path/build.log" \\
+                        --job-name="${{JOB_NAME}}" \\
+                        --build-number="${{BUILD_NUMBER}}"
+                '''
+            }}
+        }}
+    }}
+}}
+```
+
+### Best Practices
+
+1. **Security**: Store credentials as environment variables or CI/CD secrets
+2. **Logging**: Always capture build logs for comprehensive analysis
+3. **Metadata**: Include job names, build numbers, and status information
+4. **Git Context**: Capture commit hashes, branches, and author information
+5. **Error Handling**: Use appropriate error handling for failed builds
+6. **Performance**: Consider log file size limits for large builds
+"""
+
+
+def generate_pipeline_config(ci_platform, agent_type, scan_triggers, include_notifications, scan_space_strategy):
+    """Generate complete pipeline configuration"""
+    
+    config = f"""# Complete CodeLogic CI/CD Pipeline Configuration
+
+## Pipeline Overview
+
+- **CI Platform**: {ci_platform.upper()}
+- **Agent Type**: {agent_type.upper()}
+- **Scan Triggers**: {', '.join(scan_triggers)}
+- **Scan Space Strategy**: {scan_space_strategy}
+- **Notifications**: {'Enabled' if include_notifications else 'Disabled'}
+
+"""
+
+    if ci_platform == "jenkins":
+        config += generate_jenkins_pipeline(agent_type, scan_triggers, include_notifications, scan_space_strategy)
+    elif ci_platform == "github-actions":
+        config += generate_github_actions_pipeline(agent_type, scan_triggers, include_notifications, scan_space_strategy)
+    elif ci_platform == "azure-devops":
+        config += generate_azure_devops_pipeline(agent_type, scan_triggers, include_notifications, scan_space_strategy)
+    elif ci_platform == "gitlab":
+        config += generate_gitlab_pipeline(agent_type, scan_triggers, include_notifications, scan_space_strategy)
+    
+    config += f"""
+
+## DevOps Best Practices
+
+### Scan Space Management
+
+Based on your strategy: **{scan_space_strategy}**
+
+"""
+    
+    if scan_space_strategy == "unique-per-branch":
+        config += """
+- Each branch gets its own scan space
+- Prevents conflicts between different development streams
+- Recommended for feature branch workflows
+- Use pattern: `{branch-name}-{timestamp}`
+"""
+    elif scan_space_strategy == "shared-development":
+        config += """
+- All development branches share the same scan space
+- Simpler management but potential conflicts
+- Good for small teams with coordinated development
+- Use pattern: `Development-{team-name}`
+"""
+    else:  # environment-based
+        config += """
+- Scan spaces based on deployment environments
+- Aligns with deployment pipeline stages
+- Recommended for production workflows
+- Use pattern: `{environment}-{application}`
+"""
+
+    config += f"""
+
+### Security Configuration
+
+```bash
+# Environment Variables (store as secrets)
+CODELOGIC_HOST="https://your-instance.app.codelogic.com"
+AGENT_UUID="your-agent-uuid"
+AGENT_PASSWORD="your-agent-password"
+
+# Optional: Custom scan space naming
+SCAN_SPACE_PREFIX="your-team"
+```
+
+### Error Handling Strategy
+
+1. **Scan Failures**: Continue pipeline but mark as unstable
+2. **Build Info Failures**: Log warnings but don't fail pipeline
+3. **Network Issues**: Retry with exponential backoff
+4. **Credential Issues**: Fail fast with clear error messages
+
+### Performance Optimization
+
+1. **Parallel Scanning**: Run multiple agent types simultaneously
+2. **Incremental Scans**: Use `--rescan` for faster subsequent scans
+3. **Resource Limits**: Set appropriate Docker memory limits
+4. **Cache Management**: Use Docker layer caching for agent images
+
+### Monitoring and Alerting
+
+"""
+
+    if include_notifications:
+        config += """
+- **Success Notifications**: Send to team channels on successful scans
+- **Failure Alerts**: Immediate notification for scan failures
+- **Trend Analysis**: Weekly reports on scan metrics
+- **Integration**: Slack, Teams, or email notifications
+"""
+    else:
+        config += """
+- **Log-based Monitoring**: Use CI/CD platform logs for monitoring
+- **Manual Review**: Regular review of scan results
+- **Dashboard Integration**: Connect to monitoring dashboards
+"""
+
+    return config
+
+
+def generate_jenkins_pipeline(agent_type, scan_triggers, include_notifications, scan_space_strategy):
+    """Generate complete Jenkins pipeline"""
+    trigger_conditions = " || ".join([f"branch '{trigger}'" for trigger in scan_triggers])
+    
+    return f"""
+### Complete Jenkins Pipeline
+
+```groovy
+pipeline {{
+    agent any
+    
+    environment {{
+        CODELOGIC_HOST = 'https://your-instance.app.codelogic.com'
+        AGENT_UUID = credentials('codelogic-agent-uuid')
+        AGENT_PASSWORD = credentials('codelogic-agent-password')
+        SCAN_SPACE_STRATEGY = '{scan_space_strategy}'
+    }}
+    
+    parameters {{
+        choice(
+            name: 'SCAN_SPACE_NAME',
+            choices: ['Development', 'Staging', 'Production'],
+            description: 'Target scan space for this run'
+        )
+        booleanParam(
+            name: 'INCLUDE_BUILD_INFO',
+            defaultValue: true,
+            description: 'Include build information in scan'
+        )
+    }}
+    
+    stages {{
+        stage('Prepare') {{
+            steps {{
+                script {{
+                    // Determine scan space based on strategy
+                    if (env.SCAN_SPACE_STRATEGY == 'unique-per-branch') {{
+                        env.SCAN_SPACE = "${{env.BRANCH_NAME}}-${{env.BUILD_NUMBER}}"
+                    }} else if (env.SCAN_SPACE_STRATEGY == 'environment-based') {{
+                        env.SCAN_SPACE = "${{params.SCAN_SPACE_NAME}}-${{env.BRANCH_NAME}}"
+                    }} else {{
+                        env.SCAN_SPACE = params.SCAN_SPACE_NAME
+                    }}
+                }}
+                echo "Using scan space: ${{env.SCAN_SPACE}}"
+            }}
+        }}
+        
+        stage('CodeLogic Scan') {{
+            when {{
+                anyOf {{
+                    {trigger_conditions}
+                }}
+            }}
+            steps {{
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
+                    sh '''
+                        echo "Starting CodeLogic {agent_type} scan..."
+                        docker run --pull always --rm --interactive \\
+                            --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                            --env AGENT_UUID="${{AGENT_UUID}}" \\
+                            --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                            --volume "${{WORKSPACE}}:/scan" \\
+                            ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest analyze \\
+                            --application "${{JOB_NAME}}" \\
+                            --path /scan \\
+                            --scan-space-name "${{SCAN_SPACE}}" \\
+                            --rescan \\
+                            --expunge-scan-sessions
+                    '''
+                }}
+            }}
+        }}
+        
+        stage('Send Build Info') {{
+            when {{
+                anyOf {{
+                    branch 'main'
+                    branch 'develop'
+                }}
+                expression {{ params.INCLUDE_BUILD_INFO == true }}
+            }}
+            steps {{
+                sh '''
+                    echo "Sending build information to CodeLogic..."
+                    docker run --rm \\
+                        --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                        --env AGENT_UUID="${{AGENT_UUID}}" \\
+                        --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                        --volume "${{WORKSPACE}}:/scan" \\
+                        --volume "${{WORKSPACE}}/logs:/log_file_path" \\
+                        ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
+                        --log-file="/log_file_path/build.log" \\
+                        --job-name="${{JOB_NAME}}" \\
+                        --build-number="${{BUILD_NUMBER}}"
+                '''
+            }}
+        }}
+    }}
+    
+    post {{
+        always {{
+            archiveArtifacts artifacts: 'logs/**', allowEmptyArchive: true
+            publishHTML([
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'logs',
+                reportFiles: 'build.log',
+                reportName: 'Build Logs'
+            ])
+        }}
+        success {{
+            echo "CodeLogic scan completed successfully"
+        }}
+        failure {{
+            echo "CodeLogic scan failed - check logs for details"
+        }}
+    }}
+}}
+```
+
+### Jenkins Configuration Steps
+
+1. **Install Required Plugins**:
+   - Docker Pipeline Plugin
+   - HTML Publisher Plugin
+   - Credentials Plugin
+
+2. **Configure Credentials**:
+   - Go to Manage Jenkins → Manage Credentials
+   - Add Secret Text credentials:
+     - ID: `codelogic-agent-uuid`
+     - ID: `codelogic-agent-password`
+
+3. **Configure Docker**:
+   - Ensure Docker is available on Jenkins agents
+   - Configure Docker daemon access for Jenkins user
+
+4. **Set up Notifications** (if enabled):
+   - Configure Slack/Teams integration
+   - Set up email notifications for failures
+"""
+
+
+def generate_github_actions_pipeline(agent_type, scan_triggers, include_notifications, scan_space_strategy):
+    """Generate complete GitHub Actions pipeline"""
+    return f"""
+### Complete GitHub Actions Workflow
+
+Create `.github/workflows/codelogic-pipeline.yml`:
+
+```yaml
+name: CodeLogic CI/CD Pipeline
+
+on:
+  push:
+    branches: {scan_triggers}
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CODELOGIC_HOST: ${{{{ secrets.CODELOGIC_HOST }}}}
+  AGENT_UUID: ${{{{ secrets.AGENT_UUID }}}}
+  AGENT_PASSWORD: ${{{{ secrets.AGENT_PASSWORD }}}}
+  SCAN_SPACE_STRATEGY: {scan_space_strategy}
+
+jobs:
+  codelogic-scan:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        agent-type: [{agent_type}]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full git history for better analysis
+    
+    - name: Determine scan space
+      id: scan-space
+      run: |
+        if [ "${{{{ env.SCAN_SPACE_STRATEGY }}}}" = "unique-per-branch" ]; then
+          echo "space=${{{{ github.ref_name }}}}-${{{{ github.run_number }}}}" >> $GITHUB_OUTPUT
+        elif [ "${{{{ env.SCAN_SPACE_STRATEGY }}}}" = "environment-based" ]; then
+          echo "space=Development-${{{{ github.ref_name }}}}" >> $GITHUB_OUTPUT
+        else
+          echo "space=Development" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: CodeLogic Scan
+      run: |
+        echo "Starting CodeLogic ${{{{ matrix.agent-type }}}} scan..."
+        docker run --pull always --rm \\
+          --env CODELOGIC_HOST="${{{{ env.CODELOGIC_HOST }}}}" \\
+          --env AGENT_UUID="${{{{ env.AGENT_UUID }}}}" \\
+          --env AGENT_PASSWORD="${{{{ env.AGENT_PASSWORD }}}}" \\
+          --volume "${{{{ github.workspace }}}}:/scan" \\
+          ${{{{ env.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest analyze \\
+          --application "${{{{ github.repository }}}}" \\
+          --path /scan \\
+          --scan-space-name "${{{{ steps.scan-space.outputs.space }}}}" \\
+          --rescan \\
+          --expunge-scan-sessions
+      continue-on-error: true
+    
+    - name: Send Build Info
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+      run: |
+        echo "Sending build information to CodeLogic..."
+        docker run --rm \\
+          --env CODELOGIC_HOST="${{{{ env.CODELOGIC_HOST }}}}" \\
+          --env AGENT_UUID="${{{{ env.AGENT_UUID }}}}" \\
+          --env AGENT_PASSWORD="${{{{ env.AGENT_PASSWORD }}}}" \\
+          --volume "${{{{ github.workspace }}}}:/scan" \\
+          --volume "${{{{ github.workspace }}}}/logs:/log_file_path" \\
+          ${{{{ env.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest send_build_info \\
+          --log-file="/log_file_path/build.log" \\
+          --job-name="${{{{ github.repository }}}}" \\
+          --build-number="${{{{ github.run_number }}}}"
+      continue-on-error: true
+    
+    - name: Upload build logs
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-logs
+        path: logs/
+        retention-days: 30
+
+  notify:
+    needs: codelogic-scan
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: Notify Success
+      if: needs.codelogic-scan.result == 'success'
+      run: |
+        echo "CodeLogic scan completed successfully"
+        # Add notification logic here
+    
+    - name: Notify Failure
+      if: needs.codelogic-scan.result == 'failure'
+      run: |
+        echo "CodeLogic scan failed"
+        # Add notification logic here
+```
+
+### GitHub Secrets Configuration
+
+Add these secrets to your repository settings:
+
+1. Go to Settings → Secrets and variables → Actions
+2. Add the following repository secrets:
+   - `CODELOGIC_HOST`: Your CodeLogic server URL
+   - `AGENT_UUID`: Your agent UUID
+   - `AGENT_PASSWORD`: Your agent password
+
+### GitHub Actions Best Practices
+
+1. **Security**: Use repository secrets for sensitive information
+2. **Performance**: Use matrix strategy for multiple agent types
+3. **Artifacts**: Upload build logs for debugging
+4. **Notifications**: Integrate with Slack/Teams for status updates
+5. **Caching**: Use Docker layer caching for faster builds
+"""
+
+
+def generate_azure_devops_pipeline(agent_type, scan_triggers, include_notifications, scan_space_strategy):
+    """Generate complete Azure DevOps pipeline"""
+    return f"""
+### Complete Azure DevOps Pipeline
+
+Create `azure-pipelines.yml`:
+
+```yaml
+trigger:
+  branches:
+    include: {scan_triggers}
+
+variables:
+  codelogicHost: 'https://your-instance.app.codelogic.com'
+  agentUuid: $(codelogicAgentUuid)
+  agentPassword: $(codelogicAgentPassword)
+  scanSpaceStrategy: {scan_space_strategy}
+
+stages:
+- stage: CodeLogicScan
+  displayName: 'CodeLogic Scan'
+  jobs:
+  - job: Scan
+    displayName: 'Run CodeLogic Scan'
+    pool:
+      vmImage: 'ubuntu-latest'
+    
+    steps:
+    - task: Docker@2
+      displayName: 'CodeLogic Scan'
+      inputs:
+        command: 'run'
+        arguments: |
+          --pull always --rm \\
+          --env CODELOGIC_HOST="$(codelogicHost)" \\
+          --env AGENT_UUID="$(agentUuid)" \\
+          --env AGENT_PASSWORD="$(agentPassword)" \\
+          --volume "$(Build.SourcesDirectory):/scan" \\
+          $(codelogicHost)/codelogic_{agent_type}:latest analyze \\
+          --application "$(Build.DefinitionName)" \\
+          --path /scan \\
+          --scan-space-name "$(Build.BuildNumber)" \\
+          --rescan \\
+          --expunge-scan-sessions
+      continueOnError: true
+      
+    - task: Docker@2
+      displayName: 'Send Build Info'
+      condition: and(succeededOrFailed(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+      inputs:
+        command: 'run'
+        arguments: |
+          --rm \\
+          --env CODELOGIC_HOST="$(codelogicHost)" \\
+          --env AGENT_UUID="$(agentUuid)" \\
+          --env AGENT_PASSWORD="$(agentPassword)" \\
+          --volume "$(Build.SourcesDirectory):/scan" \\
+          --volume "$(Build.SourcesDirectory)/logs:/log_file_path" \\
+          $(codelogicHost)/codelogic_{agent_type}:latest send_build_info \\
+          --log-file="/log_file_path/build.log" \\
+          --job-name="$(Build.DefinitionName)" \\
+          --build-number="$(Build.BuildNumber)"
+      continueOnError: true
+      
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Build Logs'
+      inputs:
+        pathToPublish: 'logs'
+        artifactName: 'build-logs'
+      condition: always()
+```
+
+### Azure DevOps Configuration
+
+1. **Variable Groups**:
+   - Create a variable group for CodeLogic configuration
+   - Add variables: `codelogicAgentUuid`, `codelogicAgentPassword`
+   - Mark as secret variables
+
+2. **Service Connections**:
+   - Configure Docker registry connections if needed
+   - Set up authentication for private registries
+
+3. **Notifications**:
+   - Configure email notifications for build failures
+   - Set up Slack/Teams integration for status updates
+"""
+
+
+def generate_gitlab_pipeline(agent_type, scan_triggers, include_notifications, scan_space_strategy):
+    """Generate complete GitLab CI pipeline"""
+    return f"""
+### Complete GitLab CI Pipeline
+
+Create `.gitlab-ci.yml`:
+
+```yaml
+variables:
+  CODELOGIC_HOST: "https://your-instance.app.codelogic.com"
+  AGENT_UUID: $AGENT_UUID
+  AGENT_PASSWORD: $AGENT_PASSWORD
+  SCAN_SPACE_STRATEGY: {scan_space_strategy}
+  DOCKER_DRIVER: overlay2
+
+stages:
+  - scan
+  - build-info
+  - notify
+
+codelogic_scan:
+  stage: scan
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker info
+    - |
+      if [ "$SCAN_SPACE_STRATEGY" = "unique-per-branch" ]; then
+        export SCAN_SPACE="$CI_COMMIT_REF_SLUG-$CI_PIPELINE_ID"
+      elif [ "$SCAN_SPACE_STRATEGY" = "environment-based" ]; then
+        export SCAN_SPACE="Development-$CI_COMMIT_REF_SLUG"
+      else
+        export SCAN_SPACE="Development"
+      fi
+  script:
+    - |
+      echo "Starting CodeLogic {agent_type} scan..."
+      docker run --pull always --rm \\
+        --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+        --env AGENT_UUID="$AGENT_UUID" \\
+        --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+        --volume "$CI_PROJECT_DIR:/scan" \\
+        $CODELOGIC_HOST/codelogic_{agent_type}:latest analyze \\
+        --application "$CI_PROJECT_NAME" \\
+        --path /scan \\
+        --scan-space-name "$SCAN_SPACE" \\
+        --rescan \\
+        --expunge-scan-sessions
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^({scan_triggers.join('|')})$/
+  allow_failure: true
+  artifacts:
+    reports:
+      junit: logs/scan-results.xml
+    paths:
+      - logs/
+    expire_in: 30 days
+
+send_build_info:
+  stage: build-info
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - |
+      echo "Sending build information to CodeLogic..."
+      docker run --rm \\
+        --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+        --env AGENT_UUID="$AGENT_UUID" \\
+        --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+        --volume "$CI_PROJECT_DIR:/scan" \\
+        --volume "$CI_PROJECT_DIR/logs:/log_file_path" \\
+        $CODELOGIC_HOST/codelogic_{agent_type}:latest send_build_info \\
+        --log-file="/log_file_path/build.log" \\
+        --job-name="$CI_PROJECT_NAME" \\
+        --build-number="$CI_PIPELINE_ID"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+  allow_failure: true
+
+notify_success:
+  stage: notify
+  image: alpine:latest
+  script:
+    - echo "CodeLogic scan completed successfully"
+    # Add notification logic here
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" && $codelogic_scan.status == "success"
+  when: on_success
+
+notify_failure:
+  stage: notify
+  image: alpine:latest
+  script:
+    - echo "CodeLogic scan failed"
+    # Add notification logic here
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" && $codelogic_scan.status == "failed"
+  when: on_failure
+```
+
+### GitLab CI Configuration
+
+1. **Variables**:
+   - Go to Settings → CI/CD → Variables
+   - Add variables: `AGENT_UUID`, `AGENT_PASSWORD`
+   - Mark as protected and masked
+
+2. **Docker Configuration**:
+   - Ensure Docker-in-Docker is enabled
+   - Configure appropriate resource limits
+
+3. **Notifications**:
+   - Configure Slack/Teams integration
+   - Set up email notifications for failures
+"""
