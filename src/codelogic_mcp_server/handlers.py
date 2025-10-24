@@ -45,6 +45,15 @@ def ensure_logs_dir():
         os.makedirs(LOGS_DIR, exist_ok=True)
 
 
+def get_workspace_name():
+    """Get the CodeLogic workspace name from environment variable with fallback."""
+    workspace_name = os.getenv("CODELOGIC_WORKSPACE_NAME")
+    if not workspace_name:
+        sys.stderr.write("Warning: CODELOGIC_WORKSPACE_NAME environment variable not set. Using default workspace.\n")
+        workspace_name = "default-workspace"
+    return workspace_name
+
+
 def write_json_to_file(file_path, data):
     """Write JSON data to a file with improved formatting."""
     ensure_logs_dir()
@@ -62,6 +71,7 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="codelogic-method-impact",
             description="Analyze impacts of modifying a specific method within a given class or type.\n"
+                        "Uses CODELOGIC_WORKSPACE_NAME environment variable to determine the target workspace.\n"
                         "Recommended workflow:\n"
                         "1. Use this tool before implementing code changes\n"
                         "2. Run the tool against methods or functions that are being modified\n"
@@ -79,6 +89,7 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="codelogic-database-impact",
             description="Analyze impacts between code and database entities.\n"
+                        "Uses CODELOGIC_WORKSPACE_NAME environment variable to determine the target workspace.\n"
                         "Recommended workflow:\n"
                         "1. Use this tool before implementing code or database changes\n"
                         "2. Search for the relevant database entity\n"
@@ -245,7 +256,9 @@ async def handle_method_impact(arguments: dict | None) -> list[types.TextContent
         sys.stderr.write("Method must be provided\n")
         raise ValueError("Method must be provided")
 
-    mv_id = get_mv_id(os.getenv("CODELOGIC_WORKSPACE_NAME") or "")
+    # Get workspace name from environment variable
+    workspace_name = get_workspace_name()
+    mv_id = get_mv_id(workspace_name)
 
     start_time = time.time()
     nodes = get_method_nodes(mv_id, method_name)
@@ -636,6 +649,9 @@ async def handle_database_impact(arguments: dict | None) -> list[types.TextConte
         sys.stderr.write("Table or view name must be provided for column searches\n")
         raise ValueError("Table or view name must be provided for column searches")
 
+    # Get workspace name from environment variable
+    workspace_name = get_workspace_name()
+    
     # Search for the database entity
     start_time = time.time()
     search_results = await search_database_entity(entity_type, name, table_or_view)
@@ -903,11 +919,52 @@ def generate_docker_agent_config(agent_type, scan_path, application_name, scan_s
 - **Optional**: `JOB_NAME`, `BUILD_NUMBER`, `BUILD_STATUS`, `GIT_COMMIT`, `GIT_BRANCH`
 - **Purpose**: Send build metadata and context to CodeLogic
 
+### Build Status Handling:
+- **Use `currentBuild.result`** to get actual build status (SUCCESS, FAILURE, UNSTABLE, etc.)
+- **Do NOT hardcode** `BUILD_STATUS="SUCCESS"` - this is incorrect
+- **Send correct status**: `--build-status="${currentBuild.result}"`
+- **Use proper command syntax**: `send_build_info` with explicit parameters
+- **Consider sending only for failures** to reduce noise in CodeLogic
+
+### Send Build Info Command Syntax:
+- **Use explicit parameters**: `--agent-uuid`, `--agent-password`, `--server`
+- **Include pipeline system**: `--pipeline-system="Jenkins"`, `"GitHub Actions"`, `"Azure DevOps"`, `"GitLab CI/CD"`
+- **Control log size**: `--log-lines=1000` (or 2000 for failures)
+- **Set timeout**: `--timeout=60` for network operations
+- **Enable verbose logging**: `--verbose` for debugging
+
+### CI System-Specific Variables:
+
+#### **Jenkins:**
+- `--job-name="${JOB_NAME}"`
+- `--build-number="${BUILD_NUMBER}"`
+- `--build-status="${currentBuild.result}"`
+- `--pipeline-system="Jenkins"`
+
+#### **GitHub Actions:**
+- `--job-name="${GITHUB_REPOSITORY}"`
+- `--build-number="${GITHUB_RUN_NUMBER}"`
+- `--build-status="${JOB_STATUS}"`
+- `--pipeline-system="GitHub Actions"`
+
+#### **Azure DevOps:**
+- `--job-name="${BUILD_DEFINITIONNAME}"`
+- `--build-number="${BUILD_BUILDNUMBER}"`
+- `--build-status="${AGENT_JOBSTATUS}"`
+- `--pipeline-system="Azure DevOps"`
+
+#### **GitLab CI/CD:**
+- `--job-name="${CI_PROJECT_NAME}"`
+- `--build-number="${CI_PIPELINE_ID}"`
+- `--build-status="${CI_JOB_STATUS}"`
+- `--pipeline-system="GitLab CI/CD"`
+
 ### Important Notes:
 - **Analyze operations** only need basic authentication
 - **Build info operations** need additional metadata variables
 - **Do NOT mix** environment variables between operation types
 - **Each operation** has specific environment variable requirements
+- **Always use actual build status** from the CI build, not hardcoded values
 
 ## 📋 Structured Data for AI Processing
 
@@ -1008,7 +1065,45 @@ docker run --pull always --rm --interactive \\
 - **Only 3 environment variables are needed for the analyze operation**
 - **Do NOT include JOB_NAME, BUILD_NUMBER, GIT_COMMIT, or GIT_BRANCH for analyze**
 - **These additional variables are only used for build info operations**
-- **Build-related environment variables are only needed for send_build_info operations**"""
+- **Build-related environment variables are only needed for send_build_info operations**
+
+## Send Build Info Command (Separate Operation)
+For sending build information, use the proper `send_build_info` command:
+
+```bash
+# Send build info with proper command syntax
+docker run --rm \\
+    --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+    --env AGENT_UUID="${{AGENT_UUID}}" \\
+    --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+    --volume "/path/to/code:/scan" \\
+    --volume "/path/to/logs:/log_file_path" \\
+    ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
+    --agent-uuid="${{AGENT_UUID}}" \\
+    --agent-password="${{AGENT_PASSWORD}}" \\
+    --server="${{CODELOGIC_HOST}}" \\
+    --job-name="MyJob" \\
+    --build-number="123" \\
+    --build-status="SUCCESS" \\
+    --pipeline-system="Jenkins" \\
+    --log-file="/log_file_path/build.log" \\
+    --log-lines=1000 \\
+    --timeout=60 \\
+    --verbose
+```
+
+### Send Build Info Options:
+- `--agent-uuid`: Required authentication
+- `--agent-password`: Required authentication  
+- `--server`: CodeLogic server URL
+- `--job-name`: Jenkins job name
+- `--build-number`: Build number
+- `--build-status`: SUCCESS, FAILURE, UNSTABLE, etc.
+- `--pipeline-system`: Jenkins, GitHub Actions, etc.
+- `--log-file`: Path to build log file
+- `--log-lines`: Number of log lines to send (default: entire file)
+- `--timeout`: Network timeout in seconds
+- `--verbose`: Extra logging"""
 
 
 def generate_file_modifications(ci_platform, agent_type, scan_path, application_name, scan_space_name, server_host, agent_image):
@@ -1056,6 +1151,116 @@ def generate_file_modifications(ci_platform, agent_type, scan_path, application_
             '''
         }}
     }}
+}}
+
+stage('CodeLogic Build Info') {{
+    when {{
+        anyOf {{
+            branch 'main'
+            branch 'develop'
+            branch 'feature/*'
+        }}
+    }}
+    steps {{
+        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
+            script {{
+                // Determine actual build status from Jenkins
+                def buildStatus = currentBuild.result ?: 'SUCCESS'
+                echo "Sending build info with status: ${{buildStatus}}"
+                
+                // Create logs directory
+                sh 'mkdir -p logs'
+                
+                // Capture build information
+                sh '''
+                    echo "Build completed at: $(date)" > logs/build.log
+                    echo "Job: ${{JOB_NAME}}" >> logs/build.log
+                    echo "Build Number: ${{BUILD_NUMBER}}" >> logs/build.log
+                    echo "Branch: ${{BRANCH_NAME}}" >> logs/build.log
+                    echo "Git Commit: ${{GIT_COMMIT}}" >> logs/build.log
+                    echo "Build Status: ${{buildStatus}}" >> logs/build.log
+                '''
+                
+                // Send build info with correct status using proper send_build_info command
+                sh '''
+                    docker run --rm \\
+                        --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                        --env AGENT_UUID="${{AGENT_UUID}}" \\
+                        --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                        --volume "${{WORKSPACE}}:/scan" \\
+                        --volume "${{WORKSPACE}}/logs:/log_file_path" \\
+                        ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
+                        --agent-uuid="${{AGENT_UUID}}" \\
+                        --agent-password="${{AGENT_PASSWORD}}" \\
+                        --server="${{CODELOGIC_HOST}}" \\
+                        --job-name="${{JOB_NAME}}" \\
+                        --build-number="${{BUILD_NUMBER}}" \\
+                        --build-status="${{buildStatus}}" \\
+                        --pipeline-system="Jenkins" \\
+                        --log-file="/log_file_path/build.log" \\
+                        --log-lines=1000 \\
+                        --timeout=60 \\
+                        --verbose
+                '''
+            }}
+        }}
+    }}
+}}
+
+// Alternative: Send build info only for failures (recommended approach)
+stage('CodeLogic Build Info (Failures Only)') {{
+    when {{
+        anyOf {{
+            branch 'main'
+            branch 'develop'
+            branch 'feature/*'
+        }}
+        // Only send build info for failed builds
+        expression {{ currentBuild.result == 'FAILURE' }}
+    }}
+    steps {{
+        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
+            script {{
+                echo "Sending build info for FAILED build: ${{currentBuild.result}}"
+                
+                // Create logs directory
+                sh 'mkdir -p logs'
+                
+                // Capture failure information
+                sh '''
+                    echo "Build FAILED at: $(date)" > logs/build.log
+                    echo "Job: ${{JOB_NAME}}" >> logs/build.log
+                    echo "Build Number: ${{BUILD_NUMBER}}" >> logs/build.log
+                    echo "Branch: ${{BRANCH_NAME}}" >> logs/build.log
+                    echo "Git Commit: ${{GIT_COMMIT}}" >> logs/build.log
+                    echo "Build Status: FAILURE" >> logs/build.log
+                    echo "Failure Reason: ${{currentBuild.description}}" >> logs/build.log
+                '''
+                
+                // Send build info for failure using proper send_build_info command
+                sh '''
+                    docker run --rm \\
+                        --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                        --env AGENT_UUID="${{AGENT_UUID}}" \\
+                        --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                        --volume "${{WORKSPACE}}:/scan" \\
+                        --volume "${{WORKSPACE}}/logs:/log_file_path" \\
+                        ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
+                        --agent-uuid="${{AGENT_UUID}}" \\
+                        --agent-password="${{AGENT_PASSWORD}}" \\
+                        --server="${{CODELOGIC_HOST}}" \\
+                        --job-name="${{JOB_NAME}}" \\
+                        --build-number="${{BUILD_NUMBER}}" \\
+                        --build-status="FAILURE" \\
+                        --pipeline-system="Jenkins" \\
+                        --log-file="/log_file_path/build.log" \\
+                        --log-lines=2000 \\
+                        --timeout=60 \\
+                        --verbose
+                '''
+            }}
+        }}
+    }}
 }}"""
                 }
             ]
@@ -1096,7 +1301,209 @@ jobs:
           --scan-space-name "{scan_space_name}" \\
           --rescan \\
           --expunge-scan-sessions
+      continue-on-error: true
+      
+    - name: Send Build Info
+      if: always()
+      run: |
+        # Create logs directory
+        mkdir -p logs
+        
+        # Capture build information
+        echo "Build completed at: $(date)" > logs/build.log
+        echo "Repository: ${{{{ github.repository }}}}" >> logs/build.log
+        echo "Workflow: ${{{{ github.workflow }}}}" >> logs/build.log
+        echo "Run Number: ${{{{ github.run_number }}}}" >> logs/build.log
+        echo "Commit: ${{{{ github.sha }}}}" >> logs/build.log
+        echo "Branch: ${{{{ github.ref_name }}}}" >> logs/build.log
+        echo "Build Status: ${{{{ job.status }}}}" >> logs/build.log
+        
+        # Send build info with proper command syntax
+        docker run --rm \\
+          --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
+          --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
+          --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
+          --volume "${{{{ github.workspace }}}}:/scan" \\
+          --volume "${{{{ github.workspace }}}}/logs:/log_file_path" \\
+          ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest send_build_info \\
+          --agent-uuid="${{{{ secrets.AGENT_UUID }}}}" \\
+          --agent-password="${{{{ secrets.AGENT_PASSWORD }}}}" \\
+          --server="${{{{ secrets.CODELOGIC_HOST }}}}" \\
+          --job-name="${{{{ github.repository }}}}" \\
+          --build-number="${{{{ github.run_number }}}}" \\
+          --build-status="${{{{ job.status }}}}" \\
+          --pipeline-system="GitHub Actions" \\
+          --log-file="/log_file_path/build.log" \\
+          --log-lines=1000 \\
+          --timeout=60 \\
+          --verbose
       continue-on-error: true"""
+                }
+            ]
+        },
+        "azure-devops": {
+            "file": "azure-pipelines.yml",
+            "modifications": [
+                {
+                    "type": "create_file",
+                    "content": f"""trigger:
+- main
+- develop
+- feature/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  codelogicHost: '{server_host}'
+  agentUuid: $(codelogicAgentUuid)
+  agentPassword: $(codelogicAgentPassword)
+
+stages:
+- stage: CodeLogicScan
+  displayName: 'CodeLogic Scan'
+  jobs:
+  - job: Scan
+    displayName: 'Run CodeLogic Scan'
+    steps:
+    - task: Docker@2
+      displayName: 'CodeLogic Scan'
+      inputs:
+        command: 'run'
+        arguments: |
+          --pull always --rm \\
+          --env CODELOGIC_HOST="$(codelogicHost)" \\
+          --env AGENT_UUID="$(agentUuid)" \\
+          --env AGENT_PASSWORD="$(agentPassword)" \\
+          --volume "$(Build.SourcesDirectory):/scan" \\
+          $(codelogicHost)/codelogic_{agent_type}:latest analyze \\
+          --application "{application_name}" \\
+          --path /scan \\
+          --scan-space-name "{scan_space_name}" \\
+          --rescan \\
+          --expunge-scan-sessions
+      continueOnError: true
+      
+    - task: Docker@2
+      displayName: 'Send Build Info'
+      condition: always()
+      inputs:
+        command: 'run'
+        arguments: |
+          --rm \\
+          --env CODELOGIC_HOST="$(codelogicHost)" \\
+          --env AGENT_UUID="$(agentUuid)" \\
+          --env AGENT_PASSWORD="$(agentPassword)" \\
+          --volume "$(Build.SourcesDirectory):/scan" \\
+          --volume "$(Build.SourcesDirectory)/logs:/log_file_path" \\
+          $(codelogicHost)/codelogic_{agent_type}:latest send_build_info \\
+          --agent-uuid="$(agentUuid)" \\
+          --agent-password="$(agentPassword)" \\
+          --server="$(codelogicHost)" \\
+          --job-name="$(Build.DefinitionName)" \\
+          --build-number="$(Build.BuildNumber)" \\
+          --build-status="$(Agent.JobStatus)" \\
+          --pipeline-system="Azure DevOps" \\
+          --log-file="/log_file_path/build.log" \\
+          --log-lines=1000 \\
+          --timeout=60 \\
+          --verbose
+      continueOnError: true
+      
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Build Logs'
+      inputs:
+        pathToPublish: 'logs'
+        artifactName: 'build-logs'
+      condition: always()"""
+                }
+            ]
+        },
+        "gitlab": {
+            "file": ".gitlab-ci.yml",
+            "modifications": [
+                {
+                    "type": "create_file",
+                    "content": f"""stages:
+  - scan
+  - build-info
+
+variables:
+  CODELOGIC_HOST: "{server_host}"
+  DOCKER_DRIVER: overlay2
+
+codelogic_scan:
+  stage: scan
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker info
+  script:
+    - |
+      docker run --pull always --rm \\
+        --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+        --env AGENT_UUID="$AGENT_UUID" \\
+        --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+        --volume "$CI_PROJECT_DIR:/scan" \\
+        $CODELOGIC_HOST/codelogic_{agent_type}:latest analyze \\
+        --application "{application_name}" \\
+        --path /scan \\
+        --scan-space-name "{scan_space_name}" \\
+        --rescan \\
+        --expunge-scan-sessions
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH =~ /^feature\\/.*$/
+  allow_failure: true
+
+send_build_info:
+  stage: build-info
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - |
+      # Create logs directory
+      mkdir -p logs
+      
+      # Capture build information
+      echo "Build completed at: $(date)" > logs/build.log
+      echo "Project: $CI_PROJECT_NAME" >> logs/build.log
+      echo "Pipeline: $CI_PIPELINE_ID" >> logs/build.log
+      echo "Job: $CI_JOB_NAME" >> logs/build.log
+      echo "Commit: $CI_COMMIT_SHA" >> logs/build.log
+      echo "Branch: $CI_COMMIT_REF_NAME" >> logs/build.log
+      echo "Build Status: $CI_JOB_STATUS" >> logs/build.log
+      
+      # Send build info with proper command syntax
+      docker run --rm \\
+        --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+        --env AGENT_UUID="$AGENT_UUID" \\
+        --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+        --volume "$CI_PROJECT_DIR:/scan" \\
+        --volume "$CI_PROJECT_DIR/logs:/log_file_path" \\
+        $CODELOGIC_HOST/codelogic_{agent_type}:latest send_build_info \\
+        --agent-uuid="$AGENT_UUID" \\
+        --agent-password="$AGENT_PASSWORD" \\
+        --server="$CODELOGIC_HOST" \\
+        --job-name="$CI_PROJECT_NAME" \\
+        --build-number="$CI_PIPELINE_ID" \\
+        --build-status="$CI_JOB_STATUS" \\
+        --pipeline-system="GitLab CI/CD" \\
+        --log-file="/log_file_path/build.log" \\
+        --log-lines=1000 \\
+        --timeout=60 \\
+        --verbose
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+  allow_failure: true
+  artifacts:
+    paths:
+      - logs/
+    expire_in: 30 days"""
                 }
             ]
         }
@@ -1108,25 +1515,33 @@ def generate_setup_instructions(ci_platform):
     """Generate setup instructions for each platform"""
     instructions = {
         "jenkins": [
-            "Go to Jenkins → Manage Jenkins → Manage Credentials",
-            "Add Secret Text credentials: codelogic-agent-uuid, codelogic-agent-password",
-            "Install Docker Pipeline Plugin if not already installed"
+            "1. Go to Jenkins → Manage Jenkins → Manage Credentials",
+            "2. Add Secret Text credentials: codelogic-agent-uuid, codelogic-agent-password",
+            "3. Install Docker Pipeline Plugin if not already installed",
+            "4. Configure build triggers for main, develop, and feature branches",
+            "5. Test the pipeline with a sample build"
         ],
         "github-actions": [
-            "Go to repository Settings → Secrets and variables → Actions",
-            "Add repository secrets: CODELOGIC_HOST, AGENT_UUID, AGENT_PASSWORD",
-            "Ensure Docker is available in runner (default for ubuntu-latest)"
+            "1. Go to repository Settings → Secrets and variables → Actions",
+            "2. Add repository secrets: CODELOGIC_HOST, AGENT_UUID, AGENT_PASSWORD",
+            "3. Ensure Docker is available in runner (default for ubuntu-latest)",
+            "4. Configure branch triggers for main, develop, and feature branches",
+            "5. Test the workflow with a sample commit"
         ],
         "azure-devops": [
-            "Go to pipeline variables and add: codelogicAgentUuid, codelogicAgentPassword",
-            "Mark variables as secret",
-            "Ensure Docker task is available"
+            "1. Go to pipeline variables and add: codelogicAgentUuid, codelogicAgentPassword",
+            "2. Mark variables as secret",
+            "3. Ensure Docker task is available",
+            "4. Configure build triggers for main, develop, and feature branches",
+            "5. Test the pipeline with a sample build"
         ],
         "gitlab": [
-            "Go to Settings → CI/CD → Variables",
-            "Add variables: AGENT_UUID, AGENT_PASSWORD",
-            "Mark as protected and masked",
-            "Ensure Docker-in-Docker is enabled"
+            "1. Go to Settings → CI/CD → Variables",
+            "2. Add variables: AGENT_UUID, AGENT_PASSWORD",
+            "3. Mark as protected and masked",
+            "4. Ensure Docker-in-Docker is enabled",
+            "5. Configure branch rules for main, develop, and feature branches",
+            "6. Test the pipeline with a sample commit"
         ]
     }
     return instructions.get(ci_platform, [])
