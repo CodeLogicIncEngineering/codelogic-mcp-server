@@ -14,9 +14,7 @@ import mcp.types as types
 from ..server import server
 from .method_impact import handle_method_impact
 from .database_impact import handle_database_impact
-from .docker_agent import handle_docker_agent
-from .build_info import handle_build_info
-from .pipeline_helper import handle_pipeline_helper
+from .ci import handle_ci
 
 
 @server.list_tools()
@@ -68,10 +66,9 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="codelogic-docker-agent",
-            description="Generate Docker agent configurations for CodeLogic scanning in CI/CD pipelines.\n"
-                        "This tool provides AI models with structured data to directly modify CI/CD files.\n"
-                        "Supports Jenkins, GitHub Actions, Azure DevOps, and GitLab CI with actionable file changes.",
+            name="codelogic-ci",
+            description="Unified CodeLogic CI integration: generate scan (analyze) and build-info steps for CI/CD.\n"
+                        "Provides AI-actionable file modifications, templates, and best practices for Jenkins, GitHub Actions, Azure DevOps, and GitLab.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -90,46 +87,6 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["agent_type", "scan_path", "application_name"],
             },
-        ),
-        types.Tool(
-            name="codelogic-build-info",
-            description="This tool provides AI models with specific prompts to modify CI/CD files for build and test error reporting.\n"
-                        "Includes code snippets, environment variable setup, and file modification examples.\n"
-                        "Supports Git info, build logs, and metadata reporting across all major CI/CD platforms.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "ci_platform": {"type": "string", "description": "CI/CD platform (jenkins, github-actions, etc.) (optional)"},
-                    "output_format": {
-                        "type": "string",
-                        "description": "Output format for the generated commands",
-                        "enum": ["docker", "standalone", "jenkins", "yaml"]
-                    },
-                }
-            },
-        ),
-        types.Tool(
-            name="codelogic-pipeline-helper",
-            description="Generate complete CI/CD pipeline configurations for CodeLogic integration.\n"
-                        "This tool provides AI models with specific prompts and code snippets to modify existing CI/CD files.\n"
-                        "Includes step-by-step modification guides, before/after examples, and implementation templates.\n"
-                        "Supports Jenkins, GitHub Actions, Azure DevOps, and GitLab CI with actionable file modification prompts.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "ci_platform": {
-                        "type": "string",
-                        "description": "CI/CD platform for which to generate pipeline",
-                        "enum": ["jenkins", "github-actions", "azure-devops", "gitlab"]
-                    },
-                    "agent_type": {
-                        "type": "string",
-                        "description": "Type of CodeLogic agent to use",
-                        "enum": ["dotnet", "java", "sql", "javascript"]
-                    }
-                },
-                "required": ["ci_platform", "agent_type"],
-            },
         )
     ]
 
@@ -147,12 +104,8 @@ async def handle_call_tool(
             return await handle_method_impact(arguments)
         elif name == "codelogic-database-impact":
             return await handle_database_impact(arguments)
-        elif name == "codelogic-docker-agent":
-            return await handle_docker_agent(arguments)
-        elif name == "codelogic-build-info":
-            return await handle_build_info(arguments)
-        elif name == "codelogic-pipeline-helper":
-            return await handle_pipeline_helper(arguments)
+        elif name == "codelogic-ci":
+            return await handle_ci(arguments)
         else:
             sys.stderr.write(f"Unknown tool: {name}\n")
             raise ValueError(f"Unknown tool: {name}")

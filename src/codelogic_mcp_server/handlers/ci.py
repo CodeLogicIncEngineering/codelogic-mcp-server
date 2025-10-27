@@ -4,17 +4,16 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """
-Handler for the codelogic-docker-agent tool.
+Handler for the codelogic-ci tool.
 """
 
 import os
 import sys
 import mcp.types as types
-from .common import generate_send_build_info_command
 
 
-async def handle_docker_agent(arguments: dict | None) -> list[types.TextContent]:
-    """Handle the codelogic-docker-agent tool for DevOps Docker agent configuration"""
+async def handle_ci(arguments: dict | None) -> list[types.TextContent]:
+    """Handle the codelogic-ci tool for unified CI/CD configuration (analyze + build-info)"""
     if not arguments:
         sys.stderr.write("Missing arguments\n")
         raise ValueError("Missing arguments")
@@ -85,7 +84,7 @@ def generate_docker_agent_config(agent_type, scan_path, application_name, ci_pla
         "validation_checks": generate_validation_checks(ci_platform)
     }
     
-    config = f"""# CodeLogic {agent_type.upper()} Docker Agent - AI File Modification Guide
+    config = f"""# CodeLogic CI Integration - Unified CI/CD Guide
 
 ## 🎯 AI Model Instructions
 
@@ -176,6 +175,66 @@ docker run --rm \\
 3. **Security**: Store credentials as environment variables, never in code
 4. **Performance**: Use `--pull always` to ensure latest agent version
 5. **Logging**: Mount log directories for error reporting collection
+"""
+
+    # Append unified pipeline and best-practices guidance
+    config += """
+
+## Pipeline Overview
+
+- CI Platforms: Jenkins, GitHub Actions, Azure DevOps, GitLab CI
+- Agent Types: dotnet, java, sql, javascript
+- Core Utilities: analyze (code scanning) and send_build_info (build/test log reporting)
+
+## Build and Test Error Reporting (Two-step requirement)
+
+1. CAPTURE logs to a file (e.g., logs/build.log)
+2. SEND with send_build_info, mounting the logs folder and specifying --log-file
+
+### Platform Flags for send_build_info
+
+- Jenkins: --job-name="${JOB_NAME}" --build-number="${BUILD_NUMBER}" --build-status="${currentBuild.result}" --pipeline-system="Jenkins"
+- GitHub Actions: --job-name="${{ github.repository }}" --build-number="${{ github.run_number }}" --build-status="${{ job.status }}" --pipeline-system="GitHub Actions"
+- Azure DevOps: --job-name="$(Build.DefinitionName)" --build-number="$(Build.BuildNumber)" --build-status="$(Agent.JobStatus)" --pipeline-system="Azure DevOps"
+- GitLab CI/CD: --job-name="${CI_PROJECT_NAME}" --build-number="${CI_PIPELINE_ID}" --build-status="${CI_JOB_STATUS}" --pipeline-system="GitLab CI/CD"
+
+### Common Mistakes to Avoid
+
+- WRONG: Sending build info without capturing logs first
+- WRONG: Missing --log-file parameter
+- WRONG: Not mounting logs volume (e.g., --volume "$PWD/logs:/log_file_path")
+- WRONG: Jenkins step as a normal stage (should use post block)
+- WRONG: Not using always() / condition: always() so failures are missed
+
+## DevOps Best Practices
+
+### Scan Space Management
+
+- Choose a naming strategy (environment-, branch-, team-, or project-based)
+- Replace YOUR_SCAN_SPACE_NAME consistently across pipelines
+
+### Security Configuration (store as secrets)
+
+```bash
+CODELOGIC_HOST="https://your-instance.app.codelogic.com"
+AGENT_UUID="your-agent-uuid"
+AGENT_PASSWORD="your-agent-password"
+SCAN_SPACE_PREFIX="your-team" # optional
+```
+
+### Error Handling Strategy
+
+1. Scan failures: continue pipeline but mark unstable/allow_failure
+2. Build info failures: log warning; do not fail pipeline
+3. Network issues: retry with exponential backoff
+4. Credential issues: fail fast with clear errors
+
+### Performance Optimization
+
+1. Parallel scans when using multiple agent types
+2. Incremental scans with --rescan
+3. Set Docker memory limits appropriately
+4. Use Docker layer caching
 """
 
     return config
@@ -312,123 +371,89 @@ def generate_file_modifications(ci_platform, agent_type, scan_path, application_
     }}
 }}
 
-stage('CodeLogic Build Info') {{
-    when {{
-        anyOf {{
-            branch 'main'
-            branch 'develop'
-            branch 'feature/*'
-        }}
-    }}
-    steps {{
-        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
-            script {{
-                // Determine actual build status from Jenkins
-                def buildStatus = currentBuild.result ?: 'SUCCESS'
-                echo "Sending build info with status: ${{buildStatus}}"
-                
-                // Create logs directory
-                sh 'mkdir -p logs'
-                
-                // Capture build information
-                sh '''
-                    echo "Build completed at: $(date)" > logs/build.log
-                    echo "Job: ${{JOB_NAME}}" >> logs/build.log
-                    echo "Build Number: ${{BUILD_NUMBER}}" >> logs/build.log
-                    echo "Branch: ${{BRANCH_NAME}}" >> logs/build.log
-                    echo "Git Commit: ${{GIT_COMMIT}}" >> logs/build.log
-                    echo "Build Status: ${{buildStatus}}" >> logs/build.log
-                '''
-                
-                // Send build info with correct status using proper send_build_info command
-                sh '''
-                    docker run \\
-                        --pull always \\
-                        --rm \\
-                        --interactive \\
-                        --tty \\
-                        --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
-                        --env AGENT_UUID="${{AGENT_UUID}}" \\
-                        --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
-                        --volume "${{WORKSPACE}}:/scan" \\
-                        --volume "${{WORKSPACE}}/logs:/log_file_path" \\
-                        ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
-                        --agent-uuid="${{AGENT_UUID}}" \\
-                        --agent-password="${{AGENT_PASSWORD}}" \\
-                        --server="${{CODELOGIC_HOST}}" \\
-                        --job-name="${{JOB_NAME}}" \\
-                        --build-number="${{BUILD_NUMBER}}" \\
-                        --build-status="${{buildStatus}}" \\
-                        --pipeline-system="Jenkins" \\
-                        --log-file="/log_file_path/build.log" \\
-                        --log-lines=1000 \\
-                        --timeout=60 \\
-                        --verbose
-                '''
+// ❌ DEPRECATED: Stage-based build info (DO NOT USE)
+// This approach is INCORRECT because:
+// - Won't run if earlier stages fail
+// - Can't reliably capture final build status
+// - Misses console output from failed builds
+// 
+// Use the post block approach below instead!
+
+// RECOMMENDED: Use post block for build info
+// This ensures build info is sent even on failures and captures final status
+
+post {{
+    always {{
+        script {{
+            // Only send build info for main/develop/feature branches
+            if (env.BRANCH_NAME ==~ /(main|develop|feature\\/.*)/) {{
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
+                    // STEP 1: Create logs directory and capture build information
+                    sh '''
+                        mkdir -p ${{WORKSPACE}}/logs
+                        
+                        # Capture comprehensive build information
+                        echo "=== Build Information ===" > ${{WORKSPACE}}/logs/build.log
+                        echo "Build Date: \$(date)" >> ${{WORKSPACE}}/logs/build.log
+                        echo "Job Name: ${{JOB_NAME}}" >> ${{WORKSPACE}}/logs/build.log
+                        echo "Build Number: ${{BUILD_NUMBER}}" >> ${{WORKSPACE}}/logs/build.log
+                        echo "Branch: ${{BRANCH_NAME}}" >> ${{WORKSPACE}}/logs/build.log
+                        echo "Git Commit: ${{GIT_COMMIT}}" >> ${{WORKSPACE}}/logs/build.log
+                        echo "Build Result: ${{currentBuild.result ?: 'SUCCESS'}}" >> ${{WORKSPACE}}/logs/build.log
+                        echo "" >> ${{WORKSPACE}}/logs/build.log
+                        
+                        # Capture console output header
+                        echo "=== Build Console Output ===" >> ${{WORKSPACE}}/logs/build.log
+                    '''
+                    
+                    // STEP 2: Capture Jenkins console log (last 1000 lines)
+                    def consoleLog = currentBuild.rawBuild.getLog(1000)
+                    writeFile file: "${{WORKSPACE}}/logs/console_output.txt", text: consoleLog.join('\\n')
+                    
+                    sh '''
+                        cat ${{WORKSPACE}}/logs/console_output.txt >> ${{WORKSPACE}}/logs/build.log
+                    '''
+                    
+                    // STEP 3: Send build info with captured logs to CodeLogic
+                    def buildStatus = currentBuild.result ?: 'SUCCESS'
+                    echo "Sending build info with status: ${{buildStatus}}"
+                    
+                    sh '''
+                        docker run \\
+                            --pull always \\
+                            --rm \\
+                            --interactive \\
+                            --tty \\
+                            --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                            --env AGENT_UUID="${{AGENT_UUID}}" \\
+                            --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                            --volume "${{WORKSPACE}}:/scan" \\
+                            --volume "${{WORKSPACE}}/logs:/log_file_path" \\
+                            ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
+                            --agent-uuid="${{AGENT_UUID}}" \\
+                            --agent-password="${{AGENT_PASSWORD}}" \\
+                            --server="${{CODELOGIC_HOST}}" \\
+                            --job-name="${{JOB_NAME}}" \\
+                            --build-number="${{BUILD_NUMBER}}" \\
+                            --build-status="${{buildStatus}}" \\
+                            --pipeline-system="Jenkins" \\
+                            --log-file="/log_file_path/build.log" \\
+                            --log-lines=1000 \\
+                            --timeout=60 \\
+                            --verbose
+                    '''
+                }}
             }}
         }}
     }}
 }}
 
-// Alternative: Send build info only for failures (recommended approach)
-stage('CodeLogic Build Info (Failures Only)') {{
-    when {{
-        anyOf {{
-            branch 'main'
-            branch 'develop'
-            branch 'feature/*'
-        }}
-        // Only send build info for failed builds
-        expression {{ currentBuild.result == 'FAILURE' }}
-    }}
-    steps {{
-        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
-            script {{
-                echo "Sending build info for FAILED build: ${{currentBuild.result}}"
-                
-                // Create logs directory
-                sh 'mkdir -p logs'
-                
-                // Capture failure information
-                sh '''
-                    echo "Build FAILED at: $(date)" > logs/build.log
-                    echo "Job: ${{JOB_NAME}}" >> logs/build.log
-                    echo "Build Number: ${{BUILD_NUMBER}}" >> logs/build.log
-                    echo "Branch: ${{BRANCH_NAME}}" >> logs/build.log
-                    echo "Git Commit: ${{GIT_COMMIT}}" >> logs/build.log
-                    echo "Build Status: FAILURE" >> logs/build.log
-                    echo "Failure Reason: ${{currentBuild.description}}" >> logs/build.log
-                '''
-                
-                // Send build info for failure using proper send_build_info command
-                sh '''
-                    docker run \\
-                        --pull always \\
-                        --rm \\
-                        --interactive \\
-                        --tty \\
-                        --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
-                        --env AGENT_UUID="${{AGENT_UUID}}" \\
-                        --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
-                        --volume "${{WORKSPACE}}:/scan" \\
-                        --volume "${{WORKSPACE}}/logs:/log_file_path" \\
-                        ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
-                        --agent-uuid="${{AGENT_UUID}}" \\
-                        --agent-password="${{AGENT_PASSWORD}}" \\
-                        --server="${{CODELOGIC_HOST}}" \\
-                        --job-name="${{JOB_NAME}}" \\
-                        --build-number="${{BUILD_NUMBER}}" \\
-                        --build-status="FAILURE" \\
-                        --pipeline-system="Jenkins" \\
-                        --log-file="/log_file_path/build.log" \\
-                        --log-lines=2000 \\
-                        --timeout=60 \\
-                        --verbose
-                '''
-            }}
-        }}
-    }}
-}}"""
+// WHY USE POST BLOCK?
+// ✅ Runs after all stages complete (captures final status)
+// ✅ Always executes (runs even if build fails - critical for error reporting!)
+// ✅ Access to full console logs (can capture complete error output)
+// ✅ Proper build status (currentBuild.result is accurate here)
+// ❌ Stage-based approach: Won't run if earlier stages fail, can't capture final status"""
                 }
             ]
         },
