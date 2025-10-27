@@ -817,22 +817,22 @@ def generate_jenkins_config(agent_type, scan_path, application_name, server_host
     # Technology-specific guidance based on agent type
     tech_guidance = {
         'dotnet': {
-            'build_log_capture': 'dotnet build 2>&1 | tee build.log',
-            'test_log_capture': 'dotnet test 2>&1 | tee test.log',
+            'build_command': 'dotnet build',
+            'test_command': 'dotnet test',
             'env_info': 'dotnet --version && dotnet --info',
             'artifacts': '*.dll, *.exe, *.so',
             'test_results': 'TestResults/**/*.trx'
         },
         'java': {
-            'build_log_capture': 'mvn clean compile 2>&1 | tee build.log',
-            'test_log_capture': 'mvn test 2>&1 | tee test.log',
+            'build_command': 'mvn clean compile',
+            'test_command': 'mvn test',
             'env_info': 'java -version && mvn -version',
             'artifacts': '*.jar, *.war, *.ear',
             'test_results': 'target/surefire-reports/**/*.xml'
         },
         'javascript': {
-            'build_log_capture': 'npm run build 2>&1 | tee build.log',
-            'test_log_capture': 'npm test 2>&1 | tee test.log',
+            'build_command': 'npm run build',
+            'test_command': 'npm test',
             'env_info': 'node --version && npm --version',
             'artifacts': 'dist/**, build/**, *.js',
             'test_results': 'coverage/**, test-results/**'
@@ -847,10 +847,14 @@ def generate_jenkins_config(agent_type, scan_path, application_name, server_host
 **AI Prompt: "Modify the Jenkinsfile to add CodeLogic scanning for {agent_type.upper()} applications"**
 
 **CRITICAL INSTRUCTIONS FOR AI:**
-1. **You MUST modify existing build and test stages** to capture logs using `tee` commands
-2. **Do NOT just add new stages** - modify the existing ones
-3. **The log capture is REQUIRED, not optional** - CodeLogic needs these logs
-4. **Use BEFORE/AFTER examples** to show exactly what to change
+1. **You MUST modify existing build and test stages** to capture logs to files
+2. **Choose the appropriate log capture method based on the CI platform and OS**:
+   - For Linux/Unix agents: Use `tee`, redirection, or shell logging
+   - For Windows agents: Use PowerShell Tee-Object, redirection, or similar
+   - For cross-platform: Consider the agent's actual OS or provide platform-specific examples
+3. **Do NOT just add new stages** - modify the existing ones to include log capture
+4. **The log capture is REQUIRED, not optional** - CodeLogic needs these logs for analysis
+5. **Use BEFORE/AFTER examples** to show exactly what to change
 
 ## ⚠️ IMPORTANT: Scan Space Name Required
 
@@ -887,6 +891,11 @@ environment {{
 
 **Find your existing build stages** (like `stage('Build')`, `stage('Unit Test')`, etc.) and modify them to capture logs:
 
+**Platform-Specific Log Capture Guidance:**
+- **Linux/Unix agents**: Use `tee` command (e.g., `{tech_info['build_command']} 2>&1 | tee logs/build.log`)
+- **Windows agents**: Use PowerShell (e.g., `{tech_info['build_command']} 2>&1 | Tee-Object -FilePath logs/build.log`)
+- **Cross-platform**: Detect the OS and use appropriate method, or use redirection (e.g., `{tech_info['build_command']} > logs/build.log 2>&1`)
+
 ```groovy
 // BEFORE: Your existing build stage
 stage('Build') {{
@@ -895,7 +904,7 @@ stage('Build') {{
     }}
 }}
 
-// AFTER: Modified to capture logs
+// AFTER: Modified to capture logs (Linux/Unix example with tee)
 stage('Build') {{
     steps {{
         sh '''
@@ -903,7 +912,9 @@ stage('Build') {{
             mkdir -p logs
             
             # Capture build output AND continue with normal build
-            {tech_info['build_log_capture']}
+            # Choose appropriate log capture based on your CI agent OS:
+            # Linux/Unix: use tee command
+            {tech_info['build_command']} 2>&1 | tee logs/build.log
             
             # Capture environment info for CodeLogic
             echo "=== Environment Information ===" > logs/build-info.log
@@ -911,6 +922,26 @@ stage('Build') {{
             echo "Branch: ${{BRANCH_NAME}}" >> logs/build-info.log
             echo "Commit: ${{GIT_COMMIT}}" >> logs/build-info.log
             {tech_info['env_info']} >> logs/build-info.log
+        '''
+    }}
+}}
+
+// ALTERNATIVE: For Windows PowerShell agents
+stage('Build') {{
+    steps {{
+        powershell '''
+            # Create logs directory
+            New-Item -ItemType Directory -Force -Path logs
+            
+            # Capture build output using PowerShell Tee-Object
+            {tech_info['build_command']} 2>&1 | Tee-Object -FilePath logs/build.log
+            
+            # Capture environment info for CodeLogic
+            "=== Environment Information ===" | Out-File logs/build-info.log
+            "Build Time: $(Get-Date)" | Out-File -Append logs/build-info.log
+            "Branch: ${{env:BRANCH_NAME}}" | Out-File -Append logs/build-info.log
+            "Commit: ${{env:GIT_COMMIT}}" | Out-File -Append logs/build-info.log
+            {tech_info['env_info']} | Out-File -Append logs/build-info.log
         '''
     }}
 }}
@@ -928,12 +959,27 @@ stage('Unit Test') {{
     }}
 }}
 
-// AFTER: Modified to capture logs
+// AFTER: Modified to capture logs (Linux/Unix example)
 stage('Unit Test') {{
     steps {{
         sh '''
             # Capture test output AND continue with normal tests
-            {tech_info['test_log_capture']}
+            # Choose appropriate log capture based on your CI agent OS:
+            # Linux/Unix: use tee command
+            {tech_info['test_command']} 2>&1 | tee logs/test.log
+            
+            # Archive test results for CodeLogic
+            archiveArtifacts artifacts: '{tech_info['test_results']}', allowEmptyArchive: true
+        '''
+    }}
+}}
+
+// ALTERNATIVE: For Windows PowerShell agents
+stage('Unit Test') {{
+    steps {{
+        powershell '''
+            # Capture test output using PowerShell Tee-Object
+            {tech_info['test_command']} 2>&1 | Tee-Object -FilePath logs/test.log
             
             # Archive test results for CodeLogic
             archiveArtifacts artifacts: '{tech_info['test_results']}', allowEmptyArchive: true
@@ -942,10 +988,11 @@ stage('Unit Test') {{
 }}
 ```
 
-**IMPORTANT**: The `tee` command in the log capture examples will:
+**IMPORTANT**: Log capture methods (tee, Tee-Object, redirection) will:
 - ✅ **Continue your normal build/test process** (output goes to console)
 - ✅ **Save a copy to log files** (for CodeLogic analysis)
 - ✅ **Not break your existing pipeline** (if build fails, pipeline still fails)
+- ⚠️ **Choose the right method for your CI agent OS** (Linux/Unix vs Windows)
 
 #### Example for .NET Projects:
 
@@ -961,13 +1008,14 @@ stage('Build netCape') {{
 }}
 ```
 
-**MODIFY them to this:**
+**MODIFY them to this (Linux/Unix example):**
 ```groovy
 stage('Build netCape') {{
     steps {{
         sh '''
             mkdir -p logs
             dotnet restore
+            # Use tee for Linux/Unix agents, or adjust for Windows
             dotnet publish -c Release -p:Version=$MAVEN_PUBLISH_VERSION 2>&1 | tee logs/build.log
             echo "=== Environment Information ===" > logs/build-info.log
             echo "Build Time: $(date)" >> logs/build-info.log
@@ -975,6 +1023,26 @@ stage('Build netCape') {{
             echo "Commit: ${{GIT_COMMIT}}" >> logs/build-info.log
             dotnet --version >> logs/build-info.log
             dotnet --info >> logs/build-info.log
+        '''
+    }}
+}}
+```
+
+**ALTERNATIVE for Windows agents:**
+```groovy
+stage('Build netCape') {{
+    steps {{
+        powershell '''
+            New-Item -ItemType Directory -Force -Path logs
+            dotnet restore
+            # Use Tee-Object for Windows PowerShell agents
+            dotnet publish -c Release -p:Version=${{env:MAVEN_PUBLISH_VERSION}} 2>&1 | Tee-Object -FilePath logs/build.log
+            "=== Environment Information ===" | Out-File logs/build-info.log
+            "Build Time: $(Get-Date)" | Out-File -Append logs/build-info.log
+            "Branch: ${{env:BRANCH_NAME}}" | Out-File -Append logs/build-info.log
+            "Commit: ${{env:GIT_COMMIT}}" | Out-File -Append logs/build-info.log
+            dotnet --version | Out-File -Append logs/build-info.log
+            dotnet --info | Out-File -Append logs/build-info.log
         '''
     }}
 }}
