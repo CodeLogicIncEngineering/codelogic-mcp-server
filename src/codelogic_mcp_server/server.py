@@ -43,7 +43,7 @@ async def main():
         # This import is necessary for the server to discover handlers through decorators,
         # even though we don't directly use the module in this file
         # noqa: F401 tells linters to ignore the unused import
-        from . import handlers  # noqa: F401
+        from .handlers import handle_list_tools, handle_call_tool  # noqa: F401
 
         # Run the server using stdin/stdout streams
         async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):

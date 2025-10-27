@@ -4,18 +4,19 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """
-MCP tool handlers for the CodeLogic server integration.
+Main handlers module for CodeLogic MCP server.
 
-This module implements the handlers for MCP tool operations.
-
-The handlers process tool requests, interact with the CodeLogic API to gather data,
-and format the results in a clear, actionable format for users.
+This module provides the main handler registry and routing for all CodeLogic tools.
 """
 
 import sys
 import mcp.types as types
-from .server import server
-from .handlers import handle_method_impact, handle_database_impact, handle_docker_agent, handle_build_info, handle_pipeline_helper
+from ..server import server
+from .method_impact import handle_method_impact
+from .database_impact import handle_database_impact
+from .docker_agent import handle_docker_agent
+from .build_info import handle_build_info
+from .pipeline_helper import handle_pipeline_helper
 
 
 @server.list_tools()
