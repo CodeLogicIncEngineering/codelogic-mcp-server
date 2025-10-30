@@ -289,8 +289,6 @@ For sending build information, use the proper `send_build_info` command:
 docker run \\
     --pull always \\
     --rm \\
-    --interactive \\
-    --tty \\
     --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
     --env AGENT_UUID="${{AGENT_UUID}}" \\
     --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
@@ -422,8 +420,6 @@ post {{
                         docker run \\
                             --pull always \\
                             --rm \\
-                            --interactive \\
-                            --tty \\
                             --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
                             --env AGENT_UUID="${{AGENT_UUID}}" \\
                             --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
@@ -514,8 +510,6 @@ jobs:
         docker run \\
           --pull always \\
           --rm \\
-          --interactive \\
-          --tty \\
           --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
           --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
           --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
@@ -587,8 +581,6 @@ stages:
         arguments: |
           --pull always \\
           --rm \\
-          --interactive \\
-          --tty \\
           --env CODELOGIC_HOST="$(codelogicHost)" \\
           --env AGENT_UUID="$(agentUuid)" \\
           --env AGENT_PASSWORD="$(agentPassword)" \\
@@ -679,8 +671,6 @@ send_build_info:
       docker run \\
         --pull always \\
         --rm \\
-        --interactive \\
-        --tty \\
         --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
         --env AGENT_UUID="$AGENT_UUID" \\
         --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
@@ -1305,8 +1295,6 @@ jobs:
         docker run \\
           --pull always \\
           --rm \\
-          --interactive \\
-          --tty \\
           --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
           --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
           --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
@@ -1431,8 +1419,6 @@ jobs:
         docker run \\
           --pull always \\
           --rm \\
-          --interactive \\
-          --tty \\
           --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
           --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
           --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
@@ -1516,8 +1502,6 @@ stages:
         arguments: |
           --pull always \\
           --rm \\
-          --interactive \\
-          --tty \\
           --env CODELOGIC_HOST="$(codelogicHost)" \\
           --env AGENT_UUID="$(agentUuid)" \\
           --env AGENT_PASSWORD="$(agentPassword)" \\
@@ -1605,8 +1589,6 @@ send_build_info:
       docker run \\
         --pull always \\
         --rm \\
-        --interactive \\
-        --tty \\
         --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
         --env AGENT_UUID="$AGENT_UUID" \\
         --env AGENT_PASSWORD="$AGENT_PASSWORD" \\

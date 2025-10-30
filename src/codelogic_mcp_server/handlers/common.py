@@ -92,8 +92,6 @@ def generate_send_build_info_command(agent_type, server_host, platform="generic"
         return f"""docker run \\
     --pull always \\
     --rm \\
-    --interactive \\
-    --tty \\
     --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
     --env AGENT_UUID="${{AGENT_UUID}}" \\
     --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
@@ -115,8 +113,6 @@ def generate_send_build_info_command(agent_type, server_host, platform="generic"
         return f"""docker run \\
     --pull always \\
     --rm \\
-    --interactive \\
-    --tty \\
     --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
     --env AGENT_UUID="${{AGENT_UUID}}" \\
     --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
