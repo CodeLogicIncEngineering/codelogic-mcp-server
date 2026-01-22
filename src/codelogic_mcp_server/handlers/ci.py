@@ -386,34 +386,58 @@ post {{
             // Only send build info for main/develop/feature branches
             if (env.BRANCH_NAME ==~ /(main|develop|feature\\/.*)/) {{
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
-                    // STEP 1: Create logs directory and capture build information
+                    // STEP 1: Unstash logs from individual stages (if they were stashed)
+                    // Each stage should stash its logs in a post block:
+                    // post {{
+                    //     always {{
+                    //         stash includes: 'logs/**', name: 'stage-logs', allowEmpty: true
+                    //     }}
+                    // }}
+                    try {{
+                        unstash 'build-logs'
+                    }} catch (Exception e) {{
+                        echo "Warning: Could not unstash build logs: ${{e.message}}"
+                    }}
+                    try {{
+                        unstash 'test-logs'
+                    }} catch (Exception e) {{
+                        echo "Warning: Could not unstash test logs: ${{e.message}}"
+                    }}
+                    
+                    // STEP 2: Consolidate all log files into a single file for CodeLogic
+                    // Get build status before shell operations
+                    def buildStatus = currentBuild.result ?: 'SUCCESS'
                     sh '''
+                        # Ensure logs directory exists
                         mkdir -p ${{WORKSPACE}}/logs
                         
-                        # Capture comprehensive build information
-                        echo "=== Build Information ===" > ${{WORKSPACE}}/logs/build.log
-                        echo "Build Date: \$(date)" >> ${{WORKSPACE}}/logs/build.log
-                        echo "Job Name: ${{JOB_NAME}}" >> ${{WORKSPACE}}/logs/build.log
-                        echo "Build Number: ${{BUILD_NUMBER}}" >> ${{WORKSPACE}}/logs/build.log
-                        echo "Branch: ${{BRANCH_NAME}}" >> ${{WORKSPACE}}/logs/build.log
-                        echo "Git Commit: ${{GIT_COMMIT}}" >> ${{WORKSPACE}}/logs/build.log
-                        echo "Build Result: ${{currentBuild.result ?: 'SUCCESS'}}" >> ${{WORKSPACE}}/logs/build.log
-                        echo "" >> ${{WORKSPACE}}/logs/build.log
-                        
-                        # Capture console output header
-                        echo "=== Build Console Output ===" >> ${{WORKSPACE}}/logs/build.log
+                        # Create consolidated log file with build information
+                        {{
+                            echo "=== Build Information ==="
+                            echo "Build Date: \$(date)"
+                            echo "Job Name: ${{JOB_NAME}}"
+                            echo "Build Number: ${{BUILD_NUMBER}}"
+                            echo "Branch: ${{BRANCH_NAME}}"
+                            echo "Git Commit: ${{GIT_COMMIT}}"
+                            echo "Build Result: ${{buildStatus}}"
+                            echo ""
+                            echo "=== ALL BUILD AND TEST LOGS ==="
+                            echo ""
+                            
+                            # Include all log files from logs directory
+                            if [ -d "${{WORKSPACE}}/logs" ]; then
+                                for logfile in $(find "${{WORKSPACE}}/logs" -type f -name "*.log" ! -name "codelogic-build.log" | sort); do
+                                    echo ""
+                                    echo "=== $(basename "$logfile") (FULL LOG) ==="
+                                    # Convert Windows line endings (CRLF) to Unix (LF) to ensure text-only output
+                                    sed 's/\\r//g' "$logfile" 2>/dev/null || cat "$logfile"
+                                    echo ""
+                                done
+                            fi
+                        }} | sed 's/\\r//g' | tr -d '\\000' | LC_ALL=C tr -cd '\\011\\012\\040-\\176' > ${{WORKSPACE}}/logs/codelogic-build.log
                     '''
                     
-                    // STEP 2: Capture Jenkins console log (last 1000 lines)
-                    def consoleLog = currentBuild.rawBuild.getLog(1000)
-                    writeFile file: "${{WORKSPACE}}/logs/console_output.txt", text: consoleLog.join('\\n')
-                    
-                    sh '''
-                        cat ${{WORKSPACE}}/logs/console_output.txt >> ${{WORKSPACE}}/logs/build.log
-                    '''
-                    
-                    // STEP 3: Send build info with captured logs to CodeLogic
-                    def buildStatus = currentBuild.result ?: 'SUCCESS'
+                    // STEP 3: Send build info with consolidated logs to CodeLogic
                     echo "Sending build info with status: ${{buildStatus}}"
                     
                     sh '''
@@ -433,7 +457,7 @@ post {{
                             --build-number="${{BUILD_NUMBER}}" \\
                             --build-status="${{buildStatus}}" \\
                             --pipeline-system="Jenkins" \\
-                            --log-file="/log_file_path/build.log" \\
+                            --log-file="/log_file_path/codelogic-build.log" \\
                             --log-lines=1000 \\
                             --timeout=60 \\
                             --verbose
@@ -447,9 +471,12 @@ post {{
 // WHY USE POST BLOCK?
 // ✅ Runs after all stages complete (captures final status)
 // ✅ Always executes (runs even if build fails - critical for error reporting!)
-// ✅ Access to full console logs (can capture complete error output)
+// ✅ Consolidates log files from individual stages (secure - no console log pulling)
 // ✅ Proper build status (currentBuild.result is accurate here)
-// ❌ Stage-based approach: Won't run if earlier stages fail, can't capture final status"""
+// ❌ Stage-based approach: Won't run if earlier stages fail, can't capture final status
+// 
+// SECURITY NOTE: This approach does NOT pull console logs from Jenkins (which is a security risk).
+// Instead, each stage logs its output to files using tee/Tee-Object, and those files are consolidated here."""
                 }
             ]
         },
@@ -845,6 +872,7 @@ def generate_jenkins_config(agent_type, scan_path, application_name, server_host
 3. **Do NOT just add new stages** - modify the existing ones to include log capture
 4. **The log capture is REQUIRED, not optional** - CodeLogic needs these logs for analysis
 5. **Use BEFORE/AFTER examples** to show exactly what to change
+6. **NEVER pull console logs from Jenkins** - This is a security vulnerability (see Security Best Practices below)
 
 ## ⚠️ IMPORTANT: Scan Space Name Required
 
@@ -862,6 +890,60 @@ Look for existing scan space configuration in your CI file:
 **Ask the user: "What scan space name should be used for CodeLogic scans? (e.g., 'Development', 'Production', 'Team-Frontend')"**
 
 **Do NOT proceed with CodeLogic integration until you have a scan space name from the user.**
+
+## 🔒 Security Best Practices for Jenkins Logging
+
+### ⚠️ Security Risk: Console Log Pulling
+
+**NEVER use `currentBuild.rawBuild.getLog()` or similar methods to pull console logs from Jenkins.**
+
+**Why this is a security risk:**
+- Console logs may contain sensitive information (credentials, tokens, secrets)
+- Pulling console logs programmatically can expose data that should remain in Jenkins
+- This violates security best practices for CI/CD pipelines
+
+### ✅ Secure Alternative: Per-Step Logging
+
+**Instead of pulling console logs, use per-step logging:**
+
+1. **Each stage creates log files early** - Before running commands, create log files to capture output
+2. **Each command uses `tee` (Linux) or `Tee-Object` (Windows)** - This both displays output AND saves it to a file
+3. **Stash logs in post blocks** - Each stage's post block stashes its logs for later consolidation
+4. **Consolidate in main post block** - The main post block unstashes and consolidates all log files
+
+**Benefits of per-step logging:**
+- ✅ **Secure** - No console log pulling, sensitive data stays in Jenkins
+- ✅ **Reliable** - Logs are captured even if stages fail
+- ✅ **Complete** - All output is captured, not just console logs
+- ✅ **Organized** - Each stage has its own log file, making debugging easier
+
+**Example pattern:**
+```groovy
+stage('Build') {{
+    steps {{
+        sh '''
+            mkdir -p logs
+            echo "=== Build Information ===" > logs/build.log
+            dotnet build 2>&1 | tee -a logs/build.log
+        '''
+    }}
+    post {{
+        always {{
+            stash includes: 'logs/**', name: 'build-logs', allowEmpty: true
+        }}
+    }}
+}}
+
+post {{
+    always {{
+        script {{
+            unstash 'build-logs'
+            // Consolidate all log files into codelogic-build.log
+            // Send to CodeLogic using send_build_info
+        }}
+    }}
+}}
+```
 
 #### Step 1: Add Environment Variables
 Add this to the `environment` block in your Jenkinsfile:
@@ -898,21 +980,32 @@ stage('Build') {{
 stage('Build') {{
     steps {{
         sh '''
-            # Create logs directory
+            # Create logs directory FIRST - before any other operations
             mkdir -p logs
             
+            # Create log file early to capture all output
+            echo "=== Build Information ===" > logs/build.log
+            echo "Build Time: $(date)" >> logs/build.log
+            echo "Branch: ${{BRANCH_NAME}}" >> logs/build.log
+            echo "Commit: ${{GIT_COMMIT}}" >> logs/build.log
+            echo "=== Build Output ===" >> logs/build.log
+            
             # Capture build output AND continue with normal build
+            # Use tee to both display output AND save to log file
             # Choose appropriate log capture based on your CI agent OS:
             # Linux/Unix: use tee command
-            {tech_info['build_command']} 2>&1 | tee logs/build.log
+            {tech_info['build_command']} 2>&1 | tee -a logs/build.log
             
             # Capture environment info for CodeLogic
-            echo "=== Environment Information ===" > logs/build-info.log
-            echo "Build Time: $(date)" >> logs/build-info.log
-            echo "Branch: ${{BRANCH_NAME}}" >> logs/build-info.log
-            echo "Commit: ${{GIT_COMMIT}}" >> logs/build-info.log
-            {tech_info['env_info']} >> logs/build-info.log
+            echo "=== Environment Information ===" >> logs/build.log
+            {tech_info['env_info']} >> logs/build.log
         '''
+    }}
+    post {{
+        always {{
+            // Stash logs before cleaning workspace (for CodeLogic integration)
+            stash includes: 'logs/**', name: 'build-logs', allowEmpty: true
+        }}
     }}
 }}
 
@@ -920,19 +1013,30 @@ stage('Build') {{
 stage('Build') {{
     steps {{
         powershell '''
-            # Create logs directory
+            # Create logs directory FIRST - before any other operations
             New-Item -ItemType Directory -Force -Path logs
             
+            # Create log file early to capture all output
+            "=== Build Information ===" | Out-File logs/build.log
+            "Build Time: $(Get-Date)" | Out-File -Append logs/build.log
+            "Branch: ${{env:BRANCH_NAME}}" | Out-File -Append logs/build.log
+            "Commit: ${{env:GIT_COMMIT}}" | Out-File -Append logs/build.log
+            "=== Build Output ===" | Out-File -Append logs/build.log
+            
             # Capture build output using PowerShell Tee-Object
-            {tech_info['build_command']} 2>&1 | Tee-Object -FilePath logs/build.log
+            # Tee-Object both displays output AND saves to log file
+            {tech_info['build_command']} 2>&1 | Tee-Object -FilePath logs/build.log -Append
             
             # Capture environment info for CodeLogic
-            "=== Environment Information ===" | Out-File logs/build-info.log
-            "Build Time: $(Get-Date)" | Out-File -Append logs/build-info.log
-            "Branch: ${{env:BRANCH_NAME}}" | Out-File -Append logs/build-info.log
-            "Commit: ${{env:GIT_COMMIT}}" | Out-File -Append logs/build-info.log
-            {tech_info['env_info']} | Out-File -Append logs/build-info.log
+            "=== Environment Information ===" | Out-File -Append logs/build.log
+            {tech_info['env_info']} | Out-File -Append logs/build.log
         '''
+    }}
+    post {{
+        always {{
+            // Stash logs before cleaning workspace (for CodeLogic integration)
+            stash includes: 'logs/**', name: 'build-logs', allowEmpty: true
+        }}
     }}
 }}
 ```
@@ -953,14 +1057,30 @@ stage('Unit Test') {{
 stage('Unit Test') {{
     steps {{
         sh '''
+            # Create logs directory if it doesn't exist
+            mkdir -p logs
+            
+            # Create test log file early to capture all output
+            echo "=== Test Information ===" > logs/test.log
+            echo "Test Time: $(date)" >> logs/test.log
+            echo "Branch: ${{BRANCH_NAME}}" >> logs/test.log
+            echo "=== Test Output ===" >> logs/test.log
+            
             # Capture test output AND continue with normal tests
+            # Use tee to both display output AND save to log file
             # Choose appropriate log capture based on your CI agent OS:
             # Linux/Unix: use tee command
-            {tech_info['test_command']} 2>&1 | tee logs/test.log
+            {tech_info['test_command']} 2>&1 | tee -a logs/test.log
             
             # Archive test results for CodeLogic
             archiveArtifacts artifacts: '{tech_info['test_results']}', allowEmptyArchive: true
         '''
+    }}
+    post {{
+        always {{
+            // Stash logs before cleaning workspace (for CodeLogic integration)
+            stash includes: 'logs/**', name: 'test-logs', allowEmpty: true
+        }}
     }}
 }}
 
@@ -968,12 +1088,28 @@ stage('Unit Test') {{
 stage('Unit Test') {{
     steps {{
         powershell '''
+            # Create logs directory if it doesn't exist
+            New-Item -ItemType Directory -Force -Path logs
+            
+            # Create test log file early to capture all output
+            "=== Test Information ===" | Out-File logs/test.log
+            "Test Time: $(Get-Date)" | Out-File -Append logs/test.log
+            "Branch: ${{env:BRANCH_NAME}}" | Out-File -Append logs/test.log
+            "=== Test Output ===" | Out-File -Append logs/test.log
+            
             # Capture test output using PowerShell Tee-Object
-            {tech_info['test_command']} 2>&1 | Tee-Object -FilePath logs/test.log
+            # Tee-Object both displays output AND saves to log file
+            {tech_info['test_command']} 2>&1 | Tee-Object -FilePath logs/test.log -Append
             
             # Archive test results for CodeLogic
             archiveArtifacts artifacts: '{tech_info['test_results']}', allowEmptyArchive: true
         '''
+    }}
+    post {{
+        always {{
+            // Stash logs before cleaning workspace (for CodeLogic integration)
+            stash includes: 'logs/**', name: 'test-logs', allowEmpty: true
+        }}
     }}
 }}
 ```
@@ -1003,17 +1139,32 @@ stage('Build netCape') {{
 stage('Build netCape') {{
     steps {{
         sh '''
+            # Create logs directory FIRST - before any other operations
             mkdir -p logs
-            dotnet restore
-            # Use tee for Linux/Unix agents, or adjust for Windows
-            dotnet publish -c Release -p:Version=$MAVEN_PUBLISH_VERSION 2>&1 | tee logs/build.log
-            echo "=== Environment Information ===" > logs/build-info.log
-            echo "Build Time: $(date)" >> logs/build-info.log
-            echo "Branch: ${{BRANCH_NAME}}" >> logs/build-info.log
-            echo "Commit: ${{GIT_COMMIT}}" >> logs/build-info.log
-            dotnet --version >> logs/build-info.log
-            dotnet --info >> logs/build-info.log
+            
+            # Create log file early to capture all output
+            echo "=== Build Information ===" > logs/build.log
+            echo "Build Time: $(date)" >> logs/build.log
+            echo "Branch: ${{BRANCH_NAME}}" >> logs/build.log
+            echo "Commit: ${{GIT_COMMIT}}" >> logs/build.log
+            echo "MAVEN_PUBLISH_VERSION: $MAVEN_PUBLISH_VERSION" >> logs/build.log
+            echo "=== Build Output ===" >> logs/build.log
+            
+            dotnet restore 2>&1 | tee -a logs/build.log
+            # Use tee for Linux/Unix agents to both display AND save output
+            dotnet publish -c Release -p:Version=$MAVEN_PUBLISH_VERSION 2>&1 | tee -a logs/build.log
+            
+            # Capture environment info for CodeLogic
+            echo "=== Environment Information ===" >> logs/build.log
+            dotnet --version >> logs/build.log
+            dotnet --info >> logs/build.log
         '''
+    }}
+    post {{
+        always {{
+            // Stash logs before cleaning workspace (for CodeLogic integration)
+            stash includes: 'logs/**', name: 'build-logs', allowEmpty: true
+        }}
     }}
 }}
 ```
@@ -1023,17 +1174,32 @@ stage('Build netCape') {{
 stage('Build netCape') {{
     steps {{
         powershell '''
+            # Create logs directory FIRST - before any other operations
             New-Item -ItemType Directory -Force -Path logs
-            dotnet restore
-            # Use Tee-Object for Windows PowerShell agents
-            dotnet publish -c Release -p:Version=${{env:MAVEN_PUBLISH_VERSION}} 2>&1 | Tee-Object -FilePath logs/build.log
-            "=== Environment Information ===" | Out-File logs/build-info.log
-            "Build Time: $(Get-Date)" | Out-File -Append logs/build-info.log
-            "Branch: ${{env:BRANCH_NAME}}" | Out-File -Append logs/build-info.log
-            "Commit: ${{env:GIT_COMMIT}}" | Out-File -Append logs/build-info.log
-            dotnet --version | Out-File -Append logs/build-info.log
-            dotnet --info | Out-File -Append logs/build-info.log
+            
+            # Create log file early to capture all output
+            "=== Build Information ===" | Out-File logs/build.log
+            "Build Time: $(Get-Date)" | Out-File -Append logs/build.log
+            "Branch: ${{env:BRANCH_NAME}}" | Out-File -Append logs/build.log
+            "Commit: ${{env:GIT_COMMIT}}" | Out-File -Append logs/build.log
+            "MAVEN_PUBLISH_VERSION: ${{env:MAVEN_PUBLISH_VERSION}}" | Out-File -Append logs/build.log
+            "=== Build Output ===" | Out-File -Append logs/build.log
+            
+            dotnet restore 2>&1 | Tee-Object -FilePath logs/build.log -Append
+            # Use Tee-Object for Windows PowerShell agents to both display AND save output
+            dotnet publish -c Release -p:Version=${{env:MAVEN_PUBLISH_VERSION}} 2>&1 | Tee-Object -FilePath logs/build.log -Append
+            
+            # Capture environment info for CodeLogic
+            "=== Environment Information ===" | Out-File -Append logs/build.log
+            dotnet --version | Out-File -Append logs/build.log
+            dotnet --info | Out-File -Append logs/build.log
         '''
+    }}
+    post {{
+        always {{
+            // Stash logs before cleaning workspace (for CodeLogic integration)
+            stash includes: 'logs/**', name: 'build-logs', allowEmpty: true
+        }}
     }}
 }}
 ```
