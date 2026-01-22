@@ -1380,8 +1380,7 @@ stage('CodeLogic Scan') {{
                     --path "/workspace/$ARTIFACT_PATH" \\
                     --scan-space-name "$SCAN_SPACE" \\
                     --rescan \\
-                    --expunge-scan-sessions \\
-                    --verbose
+                    --expunge-scan-sessions
             '''
         }}
     }}
