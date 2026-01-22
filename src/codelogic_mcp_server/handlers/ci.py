@@ -276,10 +276,31 @@ docker run --pull always --rm --interactive \\
     --expunge-scan-sessions
 ```
 
+## ⚠️ CRITICAL: Scan Target Must Be Built Artifacts, NOT Source Code
+
+**CodeLogic scans must target BUILT ARTIFACTS (compiled binaries, assemblies, JARs, etc.), NOT source code.**
+
+**Why built artifacts?**
+- CodeLogic analyzes compiled code to understand actual runtime behavior
+- Source code analysis doesn't capture compiled dependencies, optimizations, or actual execution paths
+- Built artifacts contain the actual code that will run in production
+
+**Common built artifact directories:**
+- **.NET**: `installdir/`, `bin/Release/`, `publish/`
+- **Java**: `target/`, `build/libs/`, `dist/`
+- **JavaScript/Node.js**: `dist/`, `build/`, `out/`
+- **Python**: `dist/`, `build/`, `.venv/lib/` (for packaged distributions)
+
+**Determine the correct path:**
+1. Look at your build stage output - where are artifacts published/installed?
+2. Check for directories like `installdir`, `dist`, `target`, `build`, `publish`
+3. The scan path should point to the directory containing compiled binaries, not source `.cs`, `.java`, `.js` files
+
 ## Important Notes
 - **Only 3 environment variables are needed for the analyze operation**
 - **Do NOT include JOB_NAME, BUILD_NUMBER, GIT_COMMIT, or GIT_BRANCH for scan**
 - **These additional variables are only used for test error reporting operations**
+- **ALWAYS scan built artifacts, never source code**
 
 ## Send Build Info Command (Separate Operation)
 For sending build information, use the proper `send_build_info` command:
@@ -350,17 +371,33 @@ def generate_file_modifications(ci_platform, agent_type, scan_path, application_
     }}
     steps {{
         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
+            script {{
+                // ⚠️ CRITICAL: CodeLogic scans must target BUILT ARTIFACTS, not source code
+                // Determine the artifact path from your build stage output
+                // Examples:
+                // .NET: "${WORKSPACE}/NetCape/installdir" or "${WORKSPACE}/bin/Release"
+                // Java: "${WORKSPACE}/target" or "${WORKSPACE}/build/libs"
+                // JavaScript: "${WORKSPACE}/dist" or "${WORKSPACE}/build"
+                def artifactPath = "{scan_path}"  // Replace with your actual artifact directory
+                
+                echo "Scanning BUILT ARTIFACTS at: ${{artifactPath}}"
+                echo "NOT scanning source code - CodeLogic requires compiled binaries"
+            }}
+            
             // CodeLogic analyze operation - only needs basic auth environment variables
             // Do NOT include JOB_NAME, BUILD_NUMBER, GIT_COMMIT, or GIT_BRANCH for analyze
             sh '''
+                # Use artifact path (built artifacts, not source code)
+                ARTIFACT_PATH="{scan_path}"  # Replace with your actual artifact directory
+                
                 docker run --pull always --rm --interactive \\
                     --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
                     --env AGENT_UUID="${{AGENT_UUID}}" \\
                     --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
-                    --volume "${{WORKSPACE}}:/scan" \\
+                    --volume "${{WORKSPACE}}:/workspace" \\
                     ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest analyze \\
                     --application "{application_name}" \\
-                    --path /scan \\
+                    --path "/workspace/$ARTIFACT_PATH" \\
                     --scan-space-name "YOUR_SCAN_SPACE_NAME" \\
                     --rescan \\
                     --expunge-scan-sessions
@@ -864,15 +901,19 @@ def generate_jenkins_config(agent_type, scan_path, application_name, server_host
 **AI Prompt: "Modify the Jenkinsfile to add CodeLogic scanning for {agent_type.upper()} applications"**
 
 **CRITICAL INSTRUCTIONS FOR AI:**
-1. **You MUST modify existing build and test stages** to capture logs to files
-2. **Choose the appropriate log capture method based on the CI platform and OS**:
+1. **CodeLogic scans MUST target BUILT ARTIFACTS, NOT source code**
+   - Scans should target compiled binaries (`.dll`, `.jar`, bundled `.js`), not source files (`.cs`, `.java`, `.ts`)
+   - Determine the artifact path from the build stage output (e.g., `installdir/`, `target/`, `dist/`, `build/`)
+   - The scan stage must run AFTER the build stage completes
+2. **You MUST modify existing build and test stages** to capture logs to files
+3. **Choose the appropriate log capture method based on the CI platform and OS**:
    - For Linux/Unix agents: Use `tee`, redirection, or shell logging
    - For Windows agents: Use PowerShell Tee-Object, redirection, or similar
    - For cross-platform: Consider the agent's actual OS or provide platform-specific examples
-3. **Do NOT just add new stages** - modify the existing ones to include log capture
-4. **The log capture is REQUIRED, not optional** - CodeLogic needs these logs for analysis
-5. **Use BEFORE/AFTER examples** to show exactly what to change
-6. **NEVER pull console logs from Jenkins** - This is a security vulnerability (see Security Best Practices below)
+4. **Do NOT just add new stages** - modify the existing ones to include log capture
+5. **The log capture is REQUIRED, not optional** - CodeLogic needs these logs for analysis
+6. **Use BEFORE/AFTER examples** to show exactly what to change
+7. **NEVER pull console logs from Jenkins** - This is a security vulnerability (see Security Best Practices below)
 
 ## ⚠️ IMPORTANT: Scan Space Name Required
 
@@ -1259,7 +1300,15 @@ stage('CodeLogic Build Info Collection') {{
 ```
 
 #### Step 5: Add CodeLogic Scan Stage
-Insert this stage after your build info collection:
+Insert this stage after your build/test stages (scans must run AFTER artifacts are built):
+
+**⚠️ CRITICAL: This stage must scan BUILT ARTIFACTS, not source code.**
+
+**Determine the artifact path:**
+- **.NET**: Look for `installdir/`, `bin/Release/`, or `publish/` directories created by your build
+- **Java**: Look for `target/`, `build/libs/`, or `dist/` directories
+- **JavaScript**: Look for `dist/`, `build/`, or `out/` directories
+- The path should contain compiled binaries (`.dll`, `.jar`, `.js` bundles), NOT source files (`.cs`, `.java`, `.ts`)
 
 ```groovy
 stage('CodeLogic Scan') {{
@@ -1272,6 +1321,39 @@ stage('CodeLogic Scan') {{
     }}
     steps {{
         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
+            script {{
+                // Determine scan space name based on branch
+                def scanSpaceName = env.SCAN_SPACE_NAME ?: "YOUR_SCAN_SPACE_NAME-${{BRANCH_NAME}}"
+                
+                // Determine artifact path - THIS MUST BE BUILT ARTIFACTS, NOT SOURCE CODE
+                // Examples:
+                // .NET: "${WORKSPACE}/NetCape/installdir" or "${WORKSPACE}/bin/Release"
+                // Java: "${WORKSPACE}/target" or "${WORKSPACE}/build/libs"
+                // JavaScript: "${WORKSPACE}/dist" or "${WORKSPACE}/build"
+                def artifactPath = "{scan_path}"  // Replace with your actual artifact directory
+                
+                echo "Starting CodeLogic {agent_type} scan..."
+                echo "Application: {application_name}"
+                echo "Scan Space: ${{scanSpaceName}}"
+                echo "Target Path: ${{artifactPath}} (BUILT ARTIFACTS)"
+                
+                // Verify artifact path exists and contains built artifacts
+                sh '''
+                    if [ ! -d "${{artifactPath}}" ]; then
+                        echo "ERROR: Artifact path does not exist: ${{artifactPath}}"
+                        echo "Make sure the build stage completed successfully and artifacts were created."
+                        exit 1
+                    fi
+                    
+                    # Check if path contains source files (this is wrong!)
+                    if find "${{artifactPath}}" -name "*.cs" -o -name "*.java" -o -name "*.ts" | head -1 | grep -q .; then
+                        echo "WARNING: Artifact path appears to contain source code files!"
+                        echo "CodeLogic should scan BUILT ARTIFACTS (binaries), not source code."
+                        echo "Please verify the artifact path points to compiled output."
+                    fi
+                '''
+            }}
+            
             sh '''
                 # Determine scan space name based on branch
                 if [[ "${{BRANCH_NAME}}" =~ ^(main|develop|master)$ ]]; then
@@ -1280,19 +1362,22 @@ stage('CodeLogic Scan') {{
                     SCAN_SPACE="YOUR_SCAN_SPACE_NAME-${{BRANCH_NAME}}-${{BUILD_NUMBER}}"
                 fi
                 
+                # Use the artifact path (built artifacts, not source code)
+                ARTIFACT_PATH="{scan_path}"  # Replace with your actual artifact directory
+                
                 echo "Starting CodeLogic {agent_type} scan..."
                 echo "Application: {application_name}"
                 echo "Scan Space: $SCAN_SPACE"
-                echo "Target Path: {scan_path}"
+                echo "Target Path: $ARTIFACT_PATH (BUILT ARTIFACTS)"
                 
                 docker run --pull always --rm --interactive \\
                     --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
                     --env AGENT_UUID="${{AGENT_UUID}}" \\
                     --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
-                    --volume "${{WORKSPACE}}:/scan" \\
+                    --volume "${{WORKSPACE}}:/workspace" \\
                     ${{CODELOGIC_IMAGE}} analyze \\
                     --application "{application_name}" \\
-                    --path "/scan/{scan_path}" \\
+                    --path "/workspace/$ARTIFACT_PATH" \\
                     --scan-space-name "$SCAN_SPACE" \\
                     --rescan \\
                     --expunge-scan-sessions \\
@@ -1352,15 +1437,30 @@ pipeline {{
         stage('CodeLogic Scan') {{
             steps {{
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {{
+                    script {{
+                        // ⚠️ CRITICAL: Determine the artifact path (BUILT ARTIFACTS, not source code)
+                        // Examples:
+                        // .NET: "${WORKSPACE}/NetCape/installdir" or "${WORKSPACE}/bin/Release"
+                        // Java: "${WORKSPACE}/target" or "${WORKSPACE}/build/libs"
+                        // JavaScript: "${WORKSPACE}/dist" or "${WORKSPACE}/build"
+                        def artifactPath = "{scan_path}"  // Replace with your actual artifact directory
+                        
+                        echo "Scanning BUILT ARTIFACTS at: ${{artifactPath}}"
+                        echo "NOT scanning source code - CodeLogic requires compiled binaries"
+                    }}
+                    
                     sh '''
+                        # Use artifact path (built artifacts, not source code)
+                        ARTIFACT_PATH="{scan_path}"  # Replace with your actual artifact directory
+                        
                         docker run --pull always --rm --interactive \\
                             --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
                             --env AGENT_UUID="${{AGENT_UUID}}" \\
                             --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
-                            --volume "${{WORKSPACE}}:/scan" \\
+                            --volume "${{WORKSPACE}}:/workspace" \\
                             ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest analyze \\
                             --application "{application_name}" \\
-                            --path /scan \\
+                            --path "/workspace/$ARTIFACT_PATH" \\
                             --scan-space-name "YOUR_SCAN_SPACE_NAME" \\
                             --rescan \\
                             --expunge-scan-sessions
@@ -1442,14 +1542,25 @@ jobs:
       
     - name: CodeLogic Scan
       run: |
+        # ⚠️ CRITICAL: CodeLogic scans must target BUILT ARTIFACTS, not source code
+        # Determine the artifact path from your build step output
+        # Examples:
+        # .NET: "bin/Release" or "publish"
+        # Java: "target" or "build/libs"
+        # JavaScript: "dist" or "build"
+        ARTIFACT_PATH="{scan_path}"  # Replace with your actual artifact directory
+        
+        echo "Scanning BUILT ARTIFACTS at: $ARTIFACT_PATH"
+        echo "NOT scanning source code - CodeLogic requires compiled binaries"
+        
         docker run --pull always --rm \\
           --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
           --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
           --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
-          --volume "${{{{ github.workspace }}}}:/scan" \\
+          --volume "${{{{ github.workspace }}}}:/workspace" \\
           ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest analyze \\
           --application "{application_name}" \\
-          --path /scan \\
+          --path "/workspace/$ARTIFACT_PATH" \\
           --scan-space-name "YOUR_SCAN_SPACE_NAME" \\
           --rescan \\
           --expunge-scan-sessions
@@ -1566,14 +1677,25 @@ jobs:
       
     - name: CodeLogic Scan
       run: |
+        # ⚠️ CRITICAL: CodeLogic scans must target BUILT ARTIFACTS, not source code
+        # Determine the artifact path from your build step output
+        # Examples:
+        # .NET: "bin/Release" or "publish"
+        # Java: "target" or "build/libs"
+        # JavaScript: "dist" or "build"
+        ARTIFACT_PATH="{scan_path}"  # Replace with your actual artifact directory
+        
+        echo "Scanning BUILT ARTIFACTS at: $ARTIFACT_PATH"
+        echo "NOT scanning source code - CodeLogic requires compiled binaries"
+        
         docker run --pull always --rm \\
           --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
           --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
           --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
-          --volume "${{{{ github.workspace }}}}:/scan" \\
+          --volume "${{{{ github.workspace }}}}:/workspace" \\
           ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest analyze \\
           --application "{application_name}" \\
-          --path /scan \\
+          --path "/workspace/$ARTIFACT_PATH" \\
           --scan-space-name "YOUR_SCAN_SPACE_NAME" \\
           --rescan \\
           --expunge-scan-sessions
@@ -1647,14 +1769,20 @@ stages:
       inputs:
         command: 'run'
         arguments: |
+          # ⚠️ CRITICAL: CodeLogic scans must target BUILT ARTIFACTS, not source code
+          # Determine the artifact path from your build step output
+          # Examples:
+          # .NET: "bin/Release" or "publish"
+          # Java: "target" or "build/libs"
+          # JavaScript: "dist" or "build"
           --pull always --rm \\
           --env CODELOGIC_HOST="$(codelogicHost)" \\
           --env AGENT_UUID="$(agentUuid)" \\
           --env AGENT_PASSWORD="$(agentPassword)" \\
-          --volume "$(Build.SourcesDirectory):/scan" \\
+          --volume "$(Build.SourcesDirectory):/workspace" \\
           $(codelogicHost)/codelogic_{agent_type}:latest analyze \\
           --application "{application_name}" \\
-          --path /scan \\
+          --path "/workspace/{scan_path}" \\
           --scan-space-name "YOUR_SCAN_SPACE_NAME" \\
           --rescan \\
           --expunge-scan-sessions
@@ -1728,14 +1856,25 @@ codelogic_scan:
     - docker info
   script:
     - |
+      # ⚠️ CRITICAL: CodeLogic scans must target BUILT ARTIFACTS, not source code
+      # Determine the artifact path from your build step output
+      # Examples:
+      # .NET: "bin/Release" or "publish"
+      # Java: "target" or "build/libs"
+      # JavaScript: "dist" or "build"
+      ARTIFACT_PATH="{scan_path}"  # Replace with your actual artifact directory
+      
+      echo "Scanning BUILT ARTIFACTS at: $ARTIFACT_PATH"
+      echo "NOT scanning source code - CodeLogic requires compiled binaries"
+      
       docker run --pull always --rm \\
         --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
         --env AGENT_UUID="$AGENT_UUID" \\
         --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
-        --volume "$CI_PROJECT_DIR:/scan" \\
+        --volume "$CI_PROJECT_DIR:/workspace" \\
         $CODELOGIC_HOST/codelogic_{agent_type}:latest analyze \\
         --application "{application_name}" \\
-        --path /scan \\
+        --path "/workspace/$ARTIFACT_PATH" \\
         --scan-space-name "YOUR_SCAN_SPACE_NAME" \\
         --rescan \\
         --expunge-scan-sessions
