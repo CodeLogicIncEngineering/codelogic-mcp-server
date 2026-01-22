@@ -441,10 +441,44 @@ post {{
                         echo "Warning: Could not unstash test logs: ${{e.message}}"
                     }}
                     
-                    // STEP 2: Consolidate all log files into a single file for CodeLogic
+                    // STEP 2: Ensure git repository is in correct state (not detached HEAD)
+                    // This is critical to ensure git branch is properly detected
+                    def branchName = env.BRANCH_NAME ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    
+                    // Ensure git repository exists - re-checkout if missing (workspace may have been cleaned)
+                    def gitRepoWasMissing = false
+                    if (!fileExists("${{WORKSPACE}}/.git")) {{
+                        echo "Git repository not found in workspace, re-checking out..."
+                        checkout scm
+                        gitRepoWasMissing = true
+                    }}
+                    
+                    // Ensure git branch is set correctly (not detached HEAD)
+                    sh """
+                        cd ${{WORKSPACE}}
+                        git checkout -b ${{branchName}} 2>/dev/null || git checkout ${{branchName}} 2>/dev/null || true
+                        git symbolic-ref HEAD refs/heads/${{branchName}} 2>/dev/null || true
+                    """
+                    
+                    // STEP 3: Consolidate all log files into a single file for CodeLogic
                     // Get build status before shell operations
                     def buildStatus = currentBuild.result ?: 'SUCCESS'
-                    sh '''
+                    
+                    // Re-unstash logs after checkout if they were removed
+                    if (gitRepoWasMissing) {{
+                        try {{
+                            unstash 'build-logs'
+                        }} catch (Exception e) {{
+                            echo "Warning: Could not unstash build logs after checkout: ${{e.message}}"
+                        }}
+                        try {{
+                            unstash 'test-logs'
+                        }} catch (Exception e) {{
+                            echo "Warning: Could not unstash test logs after checkout: ${{e.message}}"
+                        }}
+                    }}
+                    
+                    sh """
                         # Ensure logs directory exists
                         mkdir -p ${{WORKSPACE}}/logs
                         
@@ -454,7 +488,7 @@ post {{
                             echo "Build Date: \$(date)"
                             echo "Job Name: ${{JOB_NAME}}"
                             echo "Build Number: ${{BUILD_NUMBER}}"
-                            echo "Branch: ${{BRANCH_NAME}}"
+                            echo "Branch: ${{branchName}}"
                             echo "Git Commit: ${{GIT_COMMIT}}"
                             echo "Build Result: ${{buildStatus}}"
                             echo ""
@@ -472,10 +506,18 @@ post {{
                                 done
                             fi
                         }} | sed 's/\\r//g' | tr -d '\\000' | LC_ALL=C tr -cd '\\011\\012\\040-\\176' > ${{WORKSPACE}}/logs/codelogic-build.log
-                    '''
+                    """
                     
-                    // STEP 3: Send build info with consolidated logs to CodeLogic
-                    echo "Sending build info with status: ${{buildStatus}}"
+                    // STEP 4: Send build info with consolidated logs to CodeLogic
+                    echo "Sending build info with status: ${{buildStatus}} for branch: ${{branchName}}"
+                    
+                    // Verify git repository exists before Docker command
+                    sh """
+                        if [ ! -d "${{WORKSPACE}}/.git" ]; then
+                            echo "ERROR: Git repository not found at ${{WORKSPACE}}/.git" >&2
+                            exit 1
+                        fi
+                    """
                     
                     sh '''
                         docker run \\
