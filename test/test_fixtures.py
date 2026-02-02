@@ -11,8 +11,9 @@ def setup_test_environment(env_vars):
     for key, value in env_vars.items():
         os.environ[key] = value
 
-    # Override CODELOGIC_SERVER_HOST for tests
-    os.environ['CODELOGIC_SERVER_HOST'] = 'http://testserver'
+    # Override CODELOGIC_SERVER_HOST only when not provided (unit tests use testserver)
+    if not env_vars.get('CODELOGIC_SERVER_HOST'):
+        os.environ['CODELOGIC_SERVER_HOST'] = 'http://testserver'
 
     # Reload the utils module to ensure it picks up the updated environment variables
     import codelogic_mcp_server.utils

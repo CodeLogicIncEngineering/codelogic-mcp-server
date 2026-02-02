@@ -9,7 +9,478 @@ Handler for the codelogic-ci tool.
 
 import os
 import sys
+import re
+from collections import Counter
+from typing import Optional, Dict, List, Tuple
 import mcp.types as types
+
+
+def analyze_build_logs(successful_log: Optional[str], failed_log: Optional[str]) -> Dict:
+    """
+    Analyze build logs to identify low-value patterns that should be filtered out.
+    
+    Uses the provided log examples to identify:
+    - Repetitive lines (likely progress indicators or noise)
+    - Very short lines (likely formatting or separators)
+    - Common verbose prefixes (repeated command output)
+    - Empty lines and separator lines
+    
+    Returns a dictionary with filtering configuration including:
+    - patterns_to_filter: List of regex patterns to filter out
+    - exact_lines_to_filter: List of exact lines to filter (repetitive lines)
+    - verbose_prefixes: Common prefixes that indicate verbose output
+    - min_line_length: Minimum line length to keep
+    - max_repetition: Maximum times a line can repeat before filtering
+    """
+    all_logs = []
+    if successful_log:
+        all_logs.append(("successful", successful_log))
+    if failed_log:
+        all_logs.append(("failed", failed_log))
+    
+    if not all_logs:
+        return {}
+    
+    # Base patterns that are typically low-value (empty lines, separators, etc.)
+    base_noise_patterns = [
+        r'^\s*$',  # Empty lines
+        r'^\s*[-=]+\s*$',  # Separator lines (dashes, equals)
+        r'^\s*\.\.\.\s*$',  # Ellipsis-only lines
+        r'^\s*[*]+\s*$',  # Asterisk-only lines
+    ]
+    
+    # Analyze log content to identify noise patterns
+    lines_by_type = {"successful": [], "failed": []}
+    line_frequencies = Counter()
+    all_lines = []
+    
+    for log_type, log_content in all_logs:
+        if not log_content:
+            continue
+        lines = log_content.split('\n')
+        lines_by_type[log_type] = lines
+        all_lines.extend(lines)
+        line_frequencies.update(lines)
+    
+    total_lines = len(all_lines)
+    if total_lines == 0:
+        return {}
+    
+    # Identify highly repetitive lines (likely noise - progress indicators, etc.)
+    # A line that appears 2+ times or more than 5% of total lines is likely noise
+    repetition_threshold = max(2, int(total_lines * 0.05))
+    repetitive_lines = [
+        line.strip() for line, count in line_frequencies.items()
+        if count >= repetition_threshold and len(line.strip()) > 0
+    ]
+    
+    # Identify very short lines that appear frequently (likely formatting noise)
+    short_line_frequencies = Counter()
+    for line in all_lines:
+        stripped = line.strip()
+        if len(stripped) > 0 and len(stripped) < 15:
+            short_line_frequencies[stripped] += 1
+    
+    # Short lines that appear 2+ times are likely noise
+    short_noise_lines = [
+        line for line, count in short_line_frequencies.items()
+        if count >= max(2, int(total_lines * 0.05)) and len(line) < 15
+    ]
+    
+    # Identify common prefixes in verbose output (e.g., "Downloading", "Installing", etc.)
+    prefix_patterns = Counter()
+    for line in all_lines[:2000]:  # Sample first 2000 lines to avoid memory issues
+        stripped = line.strip()
+        if len(stripped) > 10 and ' ' in stripped:
+            # Get first word as prefix
+            prefix = stripped.split()[0]
+            # Only consider prefixes that are reasonable length and appear frequently
+            if 3 <= len(prefix) <= 30:
+                prefix_patterns[prefix] += 1
+    
+    # Prefixes that appear 2+ times are likely verbose output
+    verbose_prefixes = [
+        prefix for prefix, count in prefix_patterns.items()
+        if count >= max(2, int(total_lines * 0.05))
+    ]
+    
+    # Identify common patterns in repetitive lines (e.g., "Downloading...", "Building...")
+    pattern_candidates = []
+    for line in repetitive_lines[:50]:  # Analyze top 50 repetitive lines
+        stripped = line.strip()
+        if len(stripped) > 5:
+            # Look for patterns like "Verb...", "Verb: ...", "[timestamp] message"
+            if re.match(r'^[A-Za-z]+\.\.\.\s*$', stripped):
+                pattern_candidates.append(r'^[A-Za-z]+\.\.\.\s*$')
+            elif re.match(r'^\[.*?\]\s*$', stripped):
+                pattern_candidates.append(r'^\[.*?\]\s*$')
+    
+    # Build filtering configuration - focus only on identifying noise
+    filtering_config = {
+        "patterns_to_filter": base_noise_patterns + list(set(pattern_candidates)),
+        "exact_lines_to_filter": repetitive_lines[:100],  # Top 100 repetitive exact lines
+        "short_lines_to_filter": short_noise_lines[:100],  # Top 100 short noise lines
+        "verbose_prefixes": verbose_prefixes[:30],  # Top 30 verbose prefixes
+        "min_line_length": 3,  # Filter lines shorter than this
+        "max_repetition": repetition_threshold,  # Filter if line repeats more than this
+        "summary": {
+            "total_lines_analyzed": total_lines,
+            "repetitive_lines_found": len(repetitive_lines),
+            "short_noise_lines_found": len(short_noise_lines),
+            "verbose_prefixes_found": len(verbose_prefixes)
+        }
+    }
+    
+    return filtering_config
+
+
+def generate_log_filter_script(filtering_config: Dict, platform: str) -> str:
+    """
+    Generate a log filtering script based on the filtering configuration.
+    Filters out identified low-value patterns from the log examples.
+    Returns platform-specific filtering commands.
+    """
+    if not filtering_config:
+        return ""
+    
+    patterns = filtering_config.get("patterns_to_filter", [])
+    exact_lines = filtering_config.get("exact_lines_to_filter", [])
+    short_lines = filtering_config.get("short_lines_to_filter", [])
+    verbose_prefixes = filtering_config.get("verbose_prefixes", [])
+    min_line_length = filtering_config.get("min_line_length", 3)
+    max_repetition = filtering_config.get("max_repetition", 3)
+    
+    # Generate bash/shell filtering script
+    filter_script = f"""# Log filtering script to reduce verbosity
+# This script filters out low-value log content identified from your build log examples
+
+filter_log() {{
+    local input_file="$1"
+    local output_file="$2"
+    
+    # Create temporary file
+    local temp_file=$(mktemp)
+    
+    # Process each line
+    while IFS= read -r line || [ -n "$line" ]; do
+        skip_line=false
+        
+        # Filter empty lines
+        if [ -z "${{line// }}" ]; then
+            skip_line=true
+        fi
+        
+        # Filter very short lines
+        if [ ${{#line}} -lt {min_line_length} ]; then
+            skip_line=true
+        fi
+        
+        # Filter known noise patterns
+"""
+    
+    # Add pattern filtering
+    for pattern in patterns[:15]:  # Limit to top 15 patterns
+        escaped_pattern = pattern.replace("'", "'\\''").replace('\\', '\\\\')
+        filter_script += f"""        if echo "$line" | grep -qE '{escaped_pattern}'; then
+            skip_line=true
+        fi
+"""
+    
+    # Add exact line filtering (repetitive lines)
+    for exact_line in exact_lines[:50]:  # Limit to top 50 exact lines
+        escaped_line = exact_line.replace("'", "'\\''").replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+        filter_script += f"""        if [ "$line" = "{escaped_line}" ]; then
+            skip_line=true
+        fi
+"""
+    
+    # Add short line filtering
+    for short_line in short_lines[:50]:  # Limit to top 50 short lines
+        escaped_short = short_line.replace("'", "'\\''").replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+        filter_script += f"""        if [ "$line" = "{escaped_short}" ]; then
+            skip_line=true
+        fi
+"""
+    
+    # Add verbose prefix filtering
+    if verbose_prefixes:
+        filter_script += """        # Filter lines starting with verbose prefixes (if prefix appears too frequently)
+"""
+        for prefix in verbose_prefixes[:20]:  # Limit to top 20 prefixes
+            escaped_prefix = prefix.replace("'", "'\\''").replace('\\', '\\\\').replace('$', '\\$')
+            filter_script += f"""        if echo "$line" | grep -qE '^{escaped_prefix}'; then
+            prefix_count=$(grep -c "^${{escaped_prefix}}" "$input_file" 2>/dev/null || echo "0")
+            if [ "$prefix_count" -gt {max_repetition} ]; then
+                skip_line=true
+            fi
+        fi
+"""
+    
+    filter_script += """        # Output line if not filtered
+        if [ "$skip_line" = false ]; then
+            echo "$line"
+        fi
+    done < "$input_file" > "$temp_file"
+    
+    # Remove duplicate consecutive lines
+    awk '!seen[$0]++' "$temp_file" > "$output_file"
+    
+    rm -f "$temp_file"
+}
+"""
+    
+    return filter_script
+
+
+def generate_log_filtering_instructions(filtering_config: Optional[Dict], platform: str, agent_type: str = "dotnet") -> str:
+    """
+    Generate instructions for integrating log filtering into CI/CD pipelines.
+    """
+    if not filtering_config:
+        return ""
+    
+    summary = filtering_config.get("summary", {})
+    filter_script = generate_log_filter_script(filtering_config, platform)
+    
+    instructions = f"""
+## 📊 Log Filtering Configuration
+
+Based on analysis of your build logs, the following filtering has been configured to reduce verbosity:
+
+### Analysis Summary
+- **Total lines analyzed**: {summary.get('total_lines_analyzed', 0)}
+- **Repetitive lines found**: {summary.get('repetitive_lines_found', 0)} (lines that repeat frequently)
+- **Short noise lines found**: {summary.get('short_noise_lines_found', 0)} (very short lines that appear often)
+- **Verbose prefixes identified**: {summary.get('verbose_prefixes_found', 0)} (common prefixes indicating verbose output)
+
+### Filtering Strategy
+
+The log filtering will:
+1. **Remove identified noise patterns**: Based on analysis of your provided log examples, the following low-value content will be filtered:
+   - Repetitive lines (exact lines that appear many times)
+   - Very short lines (identified from your logs)
+   - Verbose prefixes (common prefixes that indicate repetitive verbose output)
+   - Empty lines and separator lines
+2. **Keep everything else**: All other log content is preserved - we only filter out the specific noise patterns identified from your examples
+3. **Reduce verbosity**: Focus on removing known noise patterns from your specific build output without trying to predict what's valuable
+
+### Integration Instructions
+
+**IMPORTANT**: Apply log filtering BEFORE sending logs to CodeLogic. This ensures only valuable information is sent.
+
+"""
+    
+    if platform == "jenkins":
+        instructions += f"""
+#### For Jenkins:
+
+Add this filtering step in your post block before sending build info:
+
+```groovy
+// Add log filtering function
+def filterLog(inputFile, outputFile) {{
+    sh '''
+        {filter_script}
+        
+        # Apply filtering
+        filter_log "${{inputFile}}" "${{outputFile}}"
+    '''
+}}
+
+// In your post block, before send_build_info:
+post {{
+    always {{
+        script {{
+            // Filter logs before sending
+            filterLog("${{WORKSPACE}}/logs/codelogic-build.log", "${{WORKSPACE}}/logs/codelogic-build-filtered.log")
+            
+            // Use filtered log for CodeLogic
+            sh '''
+                docker run \\
+                    --pull always \\
+                    --rm \\
+                    --env CODELOGIC_HOST="${{CODELOGIC_HOST}}" \\
+                    --env AGENT_UUID="${{AGENT_UUID}}" \\
+                    --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
+                    --volume "${{WORKSPACE}}:/scan" \\
+                    --volume "${{WORKSPACE}}/logs:/log_file_path" \\
+                    ${{CODELOGIC_HOST}}/codelogic_{{{{agent_type}}}}:latest send_build_info \\
+                    --agent-uuid="${{AGENT_UUID}}" \\
+                    --agent-password="${{AGENT_PASSWORD}}" \\
+                    --server="${{CODELOGIC_HOST}}" \\
+                    --job-name="${{JOB_NAME}}" \\
+                    --build-number="${{BUILD_NUMBER}}" \\
+                    --build-status="${{currentBuild.result}}" \\
+                    --pipeline-system="Jenkins" \\
+                    --log-file="/log_file_path/codelogic-build-filtered.log" \\
+                    --log-lines=1000 \\
+                    --timeout=60 \\
+                    --verbose
+            '''
+        }}
+    }}
+}}
+```
+"""
+    elif platform == "github-actions":
+        instructions += f"""
+#### For GitHub Actions:
+
+Add this filtering step before sending build info:
+
+```yaml
+- name: Filter build logs
+  if: always()
+  run: |
+    {filter_script}
+    
+    # Apply filtering
+    filter_log logs/build.log logs/build-filtered.log
+
+- name: Send Build Info
+  if: always()
+  run: |
+    docker run \\
+      --pull always \\
+      --rm \\
+      --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
+      --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
+      --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
+      --volume "${{{{ github.workspace }}}}:/scan" \\
+      --volume "${{{{ github.workspace }}}}/logs:/log_file_path" \\
+      ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{{{{agent_type}}}}:latest send_build_info \\
+      --agent-uuid="${{{{ secrets.AGENT_UUID }}}}" \\
+      --agent-password="${{{{ secrets.AGENT_PASSWORD }}}}" \\
+      --server="${{{{ secrets.CODELOGIC_HOST }}}}" \\
+      --job-name="${{{{ github.repository }}}}" \\
+      --build-number="${{{{ github.run_number }}}}" \\
+      --build-status="${{{{ job.status }}}}" \\
+      --pipeline-system="GitHub Actions" \\
+      --log-file="/log_file_path/build-filtered.log" \\
+      --log-lines=1000 \\
+      --timeout=60 \\
+      --verbose
+  continue-on-error: true
+```
+"""
+    elif platform == "azure-devops":
+        instructions += f"""
+#### For Azure DevOps:
+
+Add this filtering step before sending build info:
+
+```yaml
+- task: Bash@3
+  displayName: 'Filter build logs'
+  condition: always()
+  inputs:
+    targetType: 'inline'
+    script: |
+      {filter_script}
+      
+      # Apply filtering
+      filter_log logs/build.log logs/build-filtered.log
+
+- task: Docker@2
+  displayName: 'Send Build Info'
+  condition: always()
+  inputs:
+    command: 'run'
+    arguments: |
+      --pull always \\
+      --rm \\
+      --env CODELOGIC_HOST="$(codelogicHost)" \\
+      --env AGENT_UUID="$(agentUuid)" \\
+      --env AGENT_PASSWORD="$(agentPassword)" \\
+      --volume "$(Build.SourcesDirectory):/scan" \\
+      --volume "$(Build.SourcesDirectory)/logs:/log_file_path" \\
+      $(codelogicHost)/codelogic_{{{{agent_type}}}}:latest send_build_info \\
+      --agent-uuid="$(agentUuid)" \\
+      --agent-password="$(agentPassword)" \\
+      --server="$(codelogicHost)" \\
+      --job-name="$(Build.DefinitionName)" \\
+      --build-number="$(Build.BuildNumber)" \\
+      --build-status="$(Agent.JobStatus)" \\
+      --pipeline-system="Azure DevOps" \\
+      --log-file="/log_file_path/build-filtered.log" \\
+      --log-lines=1000 \\
+      --timeout=60 \\
+      --verbose
+  continueOnError: true
+```
+"""
+    elif platform == "gitlab":
+        instructions += f"""
+#### For GitLab CI/CD:
+
+Add this filtering step before sending build info:
+
+```yaml
+filter_logs:
+  stage: build-info
+  image: alpine:latest
+  script:
+    - |
+      {filter_script}
+      
+      # Apply filtering
+      filter_log logs/build.log logs/build-filtered.log
+  artifacts:
+    paths:
+      - logs/build-filtered.log
+    expire_in: 1 hour
+
+send_build_info:
+  stage: build-info
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - |
+      docker run \\
+        --pull always \\
+        --rm \\
+        --env CODELOGIC_HOST="$CODELOGIC_HOST" \\
+        --env AGENT_UUID="$AGENT_UUID" \\
+        --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
+        --volume "$CI_PROJECT_DIR:/scan" \\
+        --volume "$CI_PROJECT_DIR/logs:/log_file_path" \\
+        $CODELOGIC_HOST/codelogic_{{{{agent_type}}}}:latest send_build_info \\
+        --agent-uuid="$AGENT_UUID" \\
+        --agent-password="$AGENT_PASSWORD" \\
+        --server="$CODELOGIC_HOST" \\
+        --job-name="$CI_PROJECT_NAME" \\
+        --build-number="$CI_PIPELINE_ID" \\
+        --build-status="$CI_JOB_STATUS" \\
+        --pipeline-system="GitLab CI/CD" \\
+        --log-file="/log_file_path/build-filtered.log" \\
+        --log-lines=1000 \\
+        --timeout=60 \\
+        --verbose
+  dependencies:
+    - filter_logs
+  allow_failure: true
+```
+"""
+    
+    instructions += """
+### Customization
+
+You can further customize the filtering by:
+1. Adjusting the `min_line_length` threshold in the filtering script
+2. Adding or removing specific patterns in the filtering script
+3. Modifying the exact lines or prefixes to filter based on your needs
+
+### Testing
+
+After implementing log filtering:
+1. Run a test build and verify the filtered log contains the information you need
+2. Check that verbose noise patterns identified from your examples have been reduced
+3. Verify that important information (errors, failures, etc.) is still present
+4. Adjust filtering rules in the script if needed - add more patterns or remove overly aggressive filters
+"""
+    
+    return instructions
 
 
 async def handle_ci(arguments: dict | None) -> list[types.TextContent]:
@@ -22,6 +493,8 @@ async def handle_ci(arguments: dict | None) -> list[types.TextContent]:
     scan_path = arguments.get("scan_path")
     application_name = arguments.get("application_name")
     ci_platform = arguments.get("ci_platform", "generic")
+    successful_build_log = arguments.get("successful_build_log")
+    failed_build_log = arguments.get("failed_build_log")
 
     # Validate required parameters
     if not agent_type or not scan_path or not application_name:
@@ -43,10 +516,15 @@ async def handle_ci(arguments: dict | None) -> list[types.TextContent]:
     # Get server configuration
     server_host = os.getenv("CODELOGIC_SERVER_HOST")
     
+    # Analyze logs if provided
+    log_filtering_config = None
+    if successful_build_log or failed_build_log:
+        log_filtering_config = analyze_build_logs(successful_build_log, failed_build_log)
+    
     # Generate Docker agent configuration based on agent type
     agent_config = generate_docker_agent_config(
         agent_type, scan_path, application_name, 
-        ci_platform, server_host
+        ci_platform, server_host, log_filtering_config
     )
 
     return [
@@ -57,7 +535,7 @@ async def handle_ci(arguments: dict | None) -> list[types.TextContent]:
     ]
 
 
-def generate_docker_agent_config(agent_type, scan_path, application_name, ci_platform, server_host):
+def generate_docker_agent_config(agent_type, scan_path, application_name, ci_platform, server_host, log_filtering_config: Optional[Dict] = None):
     """Generate Docker agent configuration with AI-actionable prompts for CI/CD file modification"""
     
     # Agent type mappings
@@ -84,9 +562,17 @@ def generate_docker_agent_config(agent_type, scan_path, application_name, ci_pla
         "validation_checks": generate_validation_checks(ci_platform)
     }
     
-    config = f"""# CodeLogic CI Integration - Unified CI/CD Guide
+    # Add note about log filtering if configured
+    log_filtering_note = ""
+    if log_filtering_config:
+        log_filtering_note = """
+> **📊 Log Filtering Enabled**: Custom log filtering has been configured based on your build log examples.
+> See the "Log Filtering Configuration" section below for integration instructions.
 
-## 🎯 AI Model Instructions
+"""
+    
+    config = f"""# CodeLogic CI Integration - Unified CI/CD Guide
+{log_filtering_note}## 🎯 AI Model Instructions
 
 **Use the structured data below to directly modify CI/CD files in the repository.**
 
@@ -169,7 +655,13 @@ docker run --rm \\
     {server_host}/{agent_image}:latest send_build_info \\
     --log-file="/log_file_path/build.log"
 ```
+"""
 
+    # Add log filtering instructions if log analysis was performed
+    if log_filtering_config:
+        config += generate_log_filtering_instructions(log_filtering_config, ci_platform, agent_type)
+    
+    config += """
 ## Best Practices
 
 3. **Security**: Store credentials as environment variables, never in code
@@ -345,6 +837,7 @@ docker run \\
 
 def generate_file_modifications(ci_platform, agent_type, scan_path, application_name, server_host, agent_image):
     """Generate specific file modifications for each platform"""
+    _dq3 = '"""'  # triple double-quote for embedding in f-string (avoids closing the f-string in Jenkins sh blocks)
     modifications = {
         "jenkins": {
             "file": "Jenkinsfile",
@@ -375,9 +868,9 @@ def generate_file_modifications(ci_platform, agent_type, scan_path, application_
                 // ⚠️ CRITICAL: CodeLogic scans must target BUILT ARTIFACTS, not source code
                 // Determine the artifact path from your build stage output
                 // Examples:
-                // .NET: "${WORKSPACE}/NetCape/installdir" or "${WORKSPACE}/bin/Release"
-                // Java: "${WORKSPACE}/target" or "${WORKSPACE}/build/libs"
-                // JavaScript: "${WORKSPACE}/dist" or "${WORKSPACE}/build"
+                // .NET: "${{WORKSPACE}}/NetCape/installdir" or "${{WORKSPACE}}/bin/Release"
+                // Java: "${{WORKSPACE}}/target" or "${{WORKSPACE}}/build/libs"
+                // JavaScript: "${{WORKSPACE}}/dist" or "${{WORKSPACE}}/build"
                 def artifactPath = "{scan_path}"  // Replace with your actual artifact directory
                 
                 echo "Scanning BUILT ARTIFACTS at: ${{artifactPath}}"
@@ -454,11 +947,11 @@ post {{
                     }}
                     
                     // Ensure git branch is set correctly (not detached HEAD)
-                    sh """
+                    sh {_dq3}
                         cd ${{WORKSPACE}}
                         git checkout -b ${{branchName}} 2>/dev/null || git checkout ${{branchName}} 2>/dev/null || true
                         git symbolic-ref HEAD refs/heads/${{branchName}} 2>/dev/null || true
-                    """
+                    {_dq3}
                     
                     // STEP 3: Consolidate all log files into a single file for CodeLogic
                     // Get build status before shell operations
@@ -478,14 +971,14 @@ post {{
                         }}
                     }}
                     
-                    sh """
+                    sh {_dq3}
                         # Ensure logs directory exists
                         mkdir -p ${{WORKSPACE}}/logs
                         
                         # Create consolidated log file with build information
                         {{
                             echo "=== Build Information ==="
-                            echo "Build Date: \$(date)"
+                            echo "Build Date: $(date)"
                             echo "Job Name: ${{JOB_NAME}}"
                             echo "Build Number: ${{BUILD_NUMBER}}"
                             echo "Branch: ${{branchName}}"
@@ -506,18 +999,18 @@ post {{
                                 done
                             fi
                         }} | sed 's/\\r//g' | tr -d '\\000' | LC_ALL=C tr -cd '\\011\\012\\040-\\176' > ${{WORKSPACE}}/logs/codelogic-build.log
-                    """
+                    {_dq3}
                     
                     // STEP 4: Send build info with consolidated logs to CodeLogic
                     echo "Sending build info with status: ${{buildStatus}} for branch: ${{branchName}}"
                     
                     // Verify git repository exists before Docker command
-                    sh """
+                    sh {_dq3}
                         if [ ! -d "${{WORKSPACE}}/.git" ]; then
                             echo "ERROR: Git repository not found at ${{WORKSPACE}}/.git" >&2
                             exit 1
                         fi
-                    """
+                    {_dq3}
                     
                     sh '''
                         docker run \\
@@ -1369,9 +1862,9 @@ stage('CodeLogic Scan') {{
                 
                 // Determine artifact path - THIS MUST BE BUILT ARTIFACTS, NOT SOURCE CODE
                 // Examples:
-                // .NET: "${WORKSPACE}/NetCape/installdir" or "${WORKSPACE}/bin/Release"
-                // Java: "${WORKSPACE}/target" or "${WORKSPACE}/build/libs"
-                // JavaScript: "${WORKSPACE}/dist" or "${WORKSPACE}/build"
+                // .NET: "${{WORKSPACE}}/NetCape/installdir" or "${{WORKSPACE}}/bin/Release"
+                // Java: "${{WORKSPACE}}/target" or "${{WORKSPACE}}/build/libs"
+                // JavaScript: "${{WORKSPACE}}/dist" or "${{WORKSPACE}}/build"
                 def artifactPath = "{scan_path}"  // Replace with your actual artifact directory
                 
                 echo "Starting CodeLogic {agent_type} scan..."
@@ -1481,9 +1974,9 @@ pipeline {{
                     script {{
                         // ⚠️ CRITICAL: Determine the artifact path (BUILT ARTIFACTS, not source code)
                         // Examples:
-                        // .NET: "${WORKSPACE}/NetCape/installdir" or "${WORKSPACE}/bin/Release"
-                        // Java: "${WORKSPACE}/target" or "${WORKSPACE}/build/libs"
-                        // JavaScript: "${WORKSPACE}/dist" or "${WORKSPACE}/build"
+                        // .NET: "${{WORKSPACE}}/NetCape/installdir" or "${{WORKSPACE}}/bin/Release"
+                        // Java: "${{WORKSPACE}}/target" or "${{WORKSPACE}}/build/libs"
+                        // JavaScript: "${{WORKSPACE}}/dist" or "${{WORKSPACE}}/build"
                         def artifactPath = "{scan_path}"  // Replace with your actual artifact directory
                         
                         echo "Scanning BUILT ARTIFACTS at: ${{artifactPath}}"

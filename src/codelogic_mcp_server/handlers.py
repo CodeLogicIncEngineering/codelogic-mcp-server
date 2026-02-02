@@ -69,7 +69,8 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="codelogic-ci",
             description="Unified CodeLogic CI integration: generate scan (analyze) and build-info steps for CI/CD.\n"
-                        "Provides AI-actionable file modifications, templates, and best practices for Jenkins, GitHub Actions, Azure DevOps, and GitLab.",
+                        "Provides AI-actionable file modifications, templates, and best practices for Jenkins, GitHub Actions, Azure DevOps, and GitLab.\n"
+                        "Optional: Provide example build logs (successful and failed) to customize log filtering and reduce verbosity.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -84,6 +85,14 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "string",
                         "description": "CI/CD platform for which to generate configuration",
                         "enum": ["jenkins", "github-actions", "azure-devops", "gitlab", "generic"]
+                    },
+                    "successful_build_log": {
+                        "type": "string",
+                        "description": "Example log output from a successful build. Used to identify verbose patterns and customize log filtering."
+                    },
+                    "failed_build_log": {
+                        "type": "string",
+                        "description": "Example log output from a failed build. Used to identify verbose patterns and customize log filtering."
                     }
                 },
                 "required": ["agent_type", "scan_path", "application_name"],
