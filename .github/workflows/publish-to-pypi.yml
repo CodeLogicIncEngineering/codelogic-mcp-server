@@ -14,7 +14,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    if: ${{ (github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')) && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.ref == 'refs/heads/main') }}
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
@@ -61,10 +61,11 @@ jobs:
         set -euo pipefail
         OS=$(uname -s | tr '[:upper:]' '[:lower:]')
         ARCH=$(uname -m)
-        if [ "$ARCH" = "x86_64" ]; then ARCH=amd64; elif [ "$ARCH" = "aarch64" ]; then ARCH=arm64; else echo "Unsupported arch: $ARCH"; exit 1; fi
-        URL=$(curl -s https://api.github.com/repos/modelcontextprotocol/registry/releases/latest | grep -o "\"browser_download_url\": \"[^\"]*mcp-publisher_[^\"]*_${OS}_${ARCH}\.tar\.gz\"" | head -n1 | cut -d '"' -f4)
+        case "$ARCH" in x86_64) ARCH=amd64;; aarch64) ARCH=arm64;; *) echo "Unsupported arch: $ARCH"; exit 1;; esac
+        URL="https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_${OS}_${ARCH}.tar.gz"
         echo "Downloading: $URL"
-        curl -L "$URL" | tar xz mcp-publisher
+        curl -fsSL "$URL" | tar xz mcp-publisher
+        chmod +x mcp-publisher
         ./mcp-publisher --help || true
 
     - name: Login to MCP Registry (OIDC)
