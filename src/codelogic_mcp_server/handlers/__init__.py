@@ -4,18 +4,17 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """
-MCP tool handlers for the CodeLogic server integration.
+Main handlers module for CodeLogic MCP server.
 
-This module implements the handlers for MCP tool operations.
-
-The handlers process tool requests, interact with the CodeLogic API to gather data,
-and format the results in a clear, actionable format for users.
+This module provides the main handler registry and routing for all CodeLogic tools.
 """
 
 import sys
 import mcp.types as types
-from .server import server
-from .handlers import handle_method_impact, handle_database_impact, handle_ci
+from ..server import server
+from .method_impact import handle_method_impact
+from .database_impact import handle_database_impact
+from .ci import handle_ci
 
 
 @server.list_tools()
@@ -69,8 +68,7 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="codelogic-ci",
             description="Unified CodeLogic CI integration: generate scan (analyze) and build-info steps for CI/CD.\n"
-                        "Provides AI-actionable file modifications, templates, and best practices for Jenkins, GitHub Actions, Azure DevOps, and GitLab.\n"
-                        "Optional: Provide example build logs (successful and failed) to customize log filtering and reduce verbosity.",
+                        "Provides AI-actionable file modifications, templates, and best practices for Jenkins, GitHub Actions, Azure DevOps, and GitLab.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -85,14 +83,6 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "string",
                         "description": "CI/CD platform for which to generate configuration",
                         "enum": ["jenkins", "github-actions", "azure-devops", "gitlab", "generic"]
-                    },
-                    "successful_build_log": {
-                        "type": "string",
-                        "description": "Example log output from a successful build. Used to identify verbose patterns and customize log filtering."
-                    },
-                    "failed_build_log": {
-                        "type": "string",
-                        "description": "Example log output from a failed build. Used to identify verbose patterns and customize log filtering."
                     }
                 },
                 "required": ["agent_type", "scan_path", "application_name"],

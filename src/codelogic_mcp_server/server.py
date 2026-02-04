@@ -43,7 +43,7 @@ async def main():
         # This import is necessary for the server to discover handlers through decorators,
         # even though we don't directly use the module in this file
         # noqa: F401 tells linters to ignore the unused import
-        from . import handlers  # noqa: F401
+        from .handlers import handle_list_tools, handle_call_tool  # noqa: F401
 
         # Run the server using stdin/stdout streams
         async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
@@ -65,9 +65,15 @@ async def main():
                         "When modifying SQL code or database entities:\n"
                         "- Always use codelogic-database-impact to analyze potential impacts\n"
                         "- Highlight impact results for the modified database entities\n\n"
+                        "For DevOps and CI/CD integration:\n"
+                        "- Use codelogic-docker-agent to generate Docker agent configurations\n"
+                        "- Use codelogic-build-info to set up build information sending\n"
+                        "- Use codelogic-pipeline-helper to create complete CI/CD pipeline configurations\n"
+                        "- Support Jenkins, GitHub Actions, Azure DevOps, and GitLab CI platforms\n\n"
                         "To use the CodeLogic tools effectively:\n"
                         "- For code impacts: Ask about specific methods or functions\n"
                         "- For database relationships: Ask about tables, views, or columns\n"
+                        "- For DevOps: Ask about CI/CD integration, Docker agents, or build information\n"
                         "- Review the impact results before making changes\n"
                         "- Consider both direct and indirect impacts"
                     ),

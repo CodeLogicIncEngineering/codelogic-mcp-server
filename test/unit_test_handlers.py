@@ -2,7 +2,8 @@ import json
 import unittest
 import mcp.types as types
 from unittest.mock import AsyncMock, patch
-from codelogic_mcp_server.handlers import handle_call_tool, extract_relationships
+from codelogic_mcp_server.handlers import handle_call_tool
+from codelogic_mcp_server.utils import extract_relationships
 
 
 class TestHandleCallTool(unittest.TestCase):

@@ -13,6 +13,7 @@ code impact analysis capabilities to AI programming assistants.
 
 import asyncio
 from codelogic_mcp_server import server
+from codelogic_mcp_server.handlers import handle_list_tools, handle_call_tool
 
 
 def main():
@@ -21,4 +22,4 @@ def main():
 
 
 # Optionally expose other important items at package level
-__all__ = ['main', 'server']
+__all__ = ['main', 'server', 'handle_list_tools', 'handle_call_tool']
