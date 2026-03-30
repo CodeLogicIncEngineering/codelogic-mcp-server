@@ -451,3 +451,8 @@ Note: Integration tests require access to a CodeLogic server instance.
 ## Validation for Official MCP Registry
 
 mcp-name: io.github.CodeLogicIncEngineering/codelogic-mcp-server
+
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/codelogicincengineering-codelogic-mcp-server).
+
