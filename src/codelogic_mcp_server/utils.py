@@ -172,7 +172,10 @@ def get_method_nodes(materialized_view_id, short_name):
         short_name (str): Short name of the method to find
 
     Returns:
-        List[Dict]: List of method nodes, empty list if none found or on error
+        tuple[list, str | None]: ``(nodes, error_kind)``. ``nodes`` is the list of
+        method dicts. ``error_kind`` is ``None`` on success (including an empty
+        ``data`` array). On failure it is one of: ``not_found``, ``timeout``,
+        ``gateway_timeout``, or ``http_error``.
     """
     cache_key = f"{materialized_view_id}:{short_name}"
     now = datetime.now()
@@ -182,16 +185,20 @@ def get_method_nodes(materialized_view_id, short_name):
         nodes, expiry = _method_nodes_cache[cache_key]
         if now < expiry:
             sys.stderr.write(f"Method nodes cache hit for {short_name}\n")
-            return nodes
+            return nodes, None
         else:
             sys.stderr.write(f"Method nodes cache expired for {short_name}\n")
 
     try:
         token = authenticate()
         url = f"{os.getenv('CODELOGIC_SERVER_HOST')}/codelogic/server/ai-retrieval/search/shortname"
+        # Match OpenAPI/Swagger: POST with query params and an empty body. Do not send
+        # Content-Type: application/json with data={} — that can disagree with the
+        # actual body and cause gateways or parsers to stall (504) while Swagger
+        # succeeds quickly with an empty body.
         headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f"Bearer {token}"
+            "Authorization": f"Bearer {token}",
+            "Accept": "*/*",
         }
         params = {
             "materializedViewId": materialized_view_id,
@@ -199,26 +206,38 @@ def get_method_nodes(materialized_view_id, short_name):
         }
 
         sys.stderr.write(f"Requesting method nodes for {short_name} with timeout {REQUEST_TIMEOUT}s\n")
-        response = _client.post(url, headers=headers, params=params, data={})
+        response = _client.post(url, headers=headers, params=params)
+
+        if response.status_code == 404:
+            detail = ""
+            try:
+                body = response.json()
+                detail = (body.get("error") or {}).get("message", "") or ""
+            except Exception:
+                pass
+            suffix = f": {detail}" if detail else ""
+            sys.stderr.write(f"No method nodes for shortname {short_name!r} (404){suffix}\n")
+            return [], "not_found"
+
         response.raise_for_status()
 
         # Cache result
         nodes = response.json()['data']
         _method_nodes_cache[cache_key] = (nodes, now + timedelta(seconds=METHOD_CACHE_TTL))
         sys.stderr.write(f"Method nodes cached for {short_name} with TTL {METHOD_CACHE_TTL}s\n")
-        return nodes
+        return nodes, None
     except httpx.TimeoutException as e:
         sys.stderr.write(f"Timeout error fetching method nodes for {short_name}: {e}\n")
-        # Return empty list instead of raising exception
-        return []
+        return [], "timeout"
     except httpx.HTTPStatusError as e:
-        sys.stderr.write(f"HTTP error {e.response.status_code} fetching method nodes for {short_name}: {e}\n")
-        # Return empty list instead of raising exception
-        return []
+        code = e.response.status_code
+        sys.stderr.write(f"HTTP error {code} fetching method nodes for {short_name}: {e}\n")
+        if code == 504:
+            return [], "gateway_timeout"
+        return [], "http_error"
     except Exception as e:
         sys.stderr.write(f"Error fetching method nodes: {e}\n")
-        # Return empty list instead of raising exception
-        return []
+        return [], "http_error"
 
 
 def extract_relationships(impact_data):

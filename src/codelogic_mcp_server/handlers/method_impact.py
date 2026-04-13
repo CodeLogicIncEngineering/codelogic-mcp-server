@@ -36,28 +36,59 @@ async def handle_method_impact(arguments: dict | None) -> list[types.TextContent
     mv_id = get_mv_id(workspace_name)
 
     start_time = time.time()
-    nodes = get_method_nodes(mv_id, method_name)
+    nodes, method_lookup_error = get_method_nodes(mv_id, method_name)
     end_time = time.time()
     duration = end_time - start_time
     log_timing(f"get_method_nodes for method '{method_name}' in class '{class_name}'", duration)
 
-    # Check if nodes is empty due to timeout or server error
     if not nodes:
-        error_message = f"""# Unable to Analyze Method: `{method_name}`
+        if method_lookup_error == "not_found":
+            error_message = f"""# Unable to Analyze Method: `{method_name}`
 
 ## Error
-The request to retrieve method information from the CodeLogic server timed out or failed (504 Gateway Timeout).
-
-## Possible causes:
-1. The CodeLogic server is under heavy load
-2. Network connectivity issues between the MCP server and CodeLogic
-3. The method name provided (`{method_name}`) doesn't exist in the codebase
+No method nodes matched this short name in the current workspace materialized view (HTTP 404 NOT_FOUND from the CodeLogic search API).
 
 ## Recommendations:
-1. Try again in a few minutes
-2. Verify the method name is correct
-3. Check your connection to the CodeLogic server at: {os.getenv('CODELOGIC_SERVER_HOST')}
-4. If the problem persists, contact your CodeLogic administrator
+1. Confirm the method exists in the indexed codebase and spelling matches the symbol short name.
+2. Ensure `CODELOGIC_WORKSPACE_NAME` points at the workspace that contains this code.
+3. If the method was added recently, the view may need to be refreshed on the CodeLogic server.
+"""
+        elif method_lookup_error == "timeout":
+            error_message = f"""# Unable to Analyze Method: `{method_name}`
+
+## Error
+The shortname search request timed out after {os.getenv('CODELOGIC_REQUEST_TIMEOUT', '120.0')}s (client timeout).
+
+## Recommendations:
+1. Retry when the server is less busy, or raise `CODELOGIC_REQUEST_TIMEOUT` if appropriate.
+2. Verify network access to: {os.getenv('CODELOGIC_SERVER_HOST')}
+"""
+        elif method_lookup_error == "gateway_timeout":
+            error_message = f"""# Unable to Analyze Method: `{method_name}`
+
+## Error
+The CodeLogic API returned **504 Gateway Timeout** while searching for method nodes (upstream did not respond in time).
+
+## Recommendations:
+1. Try again in a few minutes; transient load or cold queries often cause this.
+2. If Swagger returns 404 quickly for the same method and workspace, report the discrepancy to CodeLogic — the authenticated or MCP request path may differ from browser/Swagger.
+3. Server: {os.getenv('CODELOGIC_SERVER_HOST')}
+"""
+        else:
+            error_message = f"""# Unable to Analyze Method: `{method_name}`
+
+## Error
+The request to retrieve method information from the CodeLogic server failed (timeout, HTTP error, or empty result).
+
+## Possible causes:
+1. The method name does not exist in the indexed codebase
+2. The CodeLogic server is under heavy load or returned an error
+3. Network issues between the MCP server and CodeLogic
+
+## Recommendations:
+1. Check MCP stderr logs for the exact HTTP status and message
+2. Verify the method name and workspace configuration
+3. Server: {os.getenv('CODELOGIC_SERVER_HOST')}
 """
         return [
             types.TextContent(

@@ -197,15 +197,17 @@ class TestMethodNodesCaching(TestCase):
 
         # Set up mock response
         mock_response = mock.MagicMock()
+        mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = {'data': [{'id': '1', 'name': 'test_method'}]}
         mock_post.return_value = mock_response
 
         # Call get_method_nodes
-        nodes = utils.get_method_nodes('mv-123', 'test.method')
+        nodes, err = utils.get_method_nodes('mv-123', 'test.method')
         cache_key = 'mv-123:test.method'
 
         # Verify results are cached and returned
+        self.assertIsNone(err)
         self.assertEqual(nodes, [{'id': '1', 'name': 'test_method'}])
         self.assertIn(cache_key, utils._method_nodes_cache)
         cached_nodes, expiry = utils._method_nodes_cache[cache_key]
@@ -234,9 +236,10 @@ class TestMethodNodesCaching(TestCase):
         mock_datetime.now.return_value = future
 
         # Call get_method_nodes
-        nodes = utils.get_method_nodes('mv-123', 'test.method')
+        nodes, err = utils.get_method_nodes('mv-123', 'test.method')
 
         # Verify cached data is returned without making requests
+        self.assertIsNone(err)
         self.assertEqual(nodes, cached_data)
         mock_authenticate.assert_not_called()
         mock_post.assert_not_called()
@@ -265,14 +268,16 @@ class TestMethodNodesCaching(TestCase):
 
         # Set up mock response
         mock_response = mock.MagicMock()
+        mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = {'data': [{'id': '2', 'name': 'new_method'}]}
         mock_post.return_value = mock_response
 
         # Call get_method_nodes
-        nodes = utils.get_method_nodes('mv-123', 'test.method')
+        nodes, err = utils.get_method_nodes('mv-123', 'test.method')
 
         # Verify new data is fetched, cached and returned
+        self.assertIsNone(err)
         self.assertEqual(nodes, [{'id': '2', 'name': 'new_method'}])
         self.assertIn(cache_key, utils._method_nodes_cache)
         new_cached_nodes, _ = utils._method_nodes_cache[cache_key]
@@ -280,6 +285,32 @@ class TestMethodNodesCaching(TestCase):
 
         # Verify cache expired message
         self.assertIn("Method nodes cache expired for test.method", self.mock_stderr.getvalue())
+
+    @mock.patch('codelogic_mcp_server.utils.authenticate')
+    @mock.patch('codelogic_mcp_server.utils._client.post')
+    @mock.patch('codelogic_mcp_server.utils.datetime')
+    def test_get_method_nodes_404_returns_not_found(self, mock_datetime, mock_post, mock_authenticate):
+        """404 from shortname search yields empty list and not_found (no raise_for_status)."""
+        now = datetime(2023, 1, 1, 12, 0, 0)
+        mock_datetime.now.return_value = now
+        mock_authenticate.return_value = 'test_token'
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {
+            "status": "error",
+            "error": {
+                "code": "NOT_FOUND",
+                "message": 'Could not find any nodes with shortname "foo".',
+                "details": [],
+            },
+        }
+        mock_post.return_value = mock_response
+
+        nodes, err = utils.get_method_nodes('mv-123', 'foo')
+
+        self.assertEqual(nodes, [])
+        self.assertEqual(err, "not_found")
+        mock_response.raise_for_status.assert_not_called()
 
 
 class TestImpactCaching(TestCase):

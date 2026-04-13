@@ -134,7 +134,7 @@ class TestUtils(TestCase):
             cls.mv_name = os.getenv('CODELOGIC_WORKSPACE_NAME')
             cls.mv_def_id = get_mv_definition_id(cls.mv_name, cls.token)
             cls.mv_id = get_mv_id_from_def(cls.mv_def_id, cls.token)
-            cls.nodes = get_method_nodes(cls.mv_id, 'IsValid')
+            cls.nodes, _ = get_method_nodes(cls.mv_id, 'IsValid')
             cls.get_method_nodes = get_method_nodes
             cls.get_impact = get_impact
         except (httpx.ConnectError, OSError):
