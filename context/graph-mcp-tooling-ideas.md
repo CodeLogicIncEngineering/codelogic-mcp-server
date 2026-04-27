@@ -9,7 +9,6 @@ Design **`codelogic-mcp-server`** so developers and AI agents get **safe, explai
 - **Curated graph access** lives behind an **HTTP API** (service layer runs bounded Cypher / repository logic against Neo4j).
 - **MCP calls agent-oriented HTTP endpoints** only.
 - **Avoid ad-hoc Bolt/Cypher from MCP** for product flows: weak guardrails, credential sprawl, and hard-to-cap queries.
-- Direct graph access remains an **operator** concern if needed.
 - The graph may contain **Java**, **C# (.NET)**, or **mixed** scans; tools must **adapt to what is present** (labels and relationship types vary by language and pipeline).
 
 ## Existing `codelogic-mcp-server` tools (baseline)
@@ -47,7 +46,7 @@ This document is about **enhancements** to the **same** MCP server (`codelogic-m
 
 ### Principles for new routes
 
-Strict **timeouts and row caps**; **request/response DTOs** for agents; reuse **services/repositories internally** shared with the UI without exposing UI routes to MCP.
+Strict **timeouts and row caps**; **request/response DTOs**; reuse **services/repositories internally** shared with the UI without exposing UI routes to MCP.
 
 ### Auth
 
