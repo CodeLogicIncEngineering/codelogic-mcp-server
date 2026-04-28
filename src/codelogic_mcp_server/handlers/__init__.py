@@ -15,6 +15,7 @@ from ..server import server
 from .method_impact import handle_method_impact
 from .database_impact import handle_database_impact
 from .ci import handle_ci
+from .graph_tools import GRAPH_TOOL_DISPATCH, handle_graph_tool
 
 
 @server.list_tools()
@@ -87,7 +88,106 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["agent_type", "scan_path", "application_name"],
             },
-        )
+        ),
+        types.Tool(
+            name="codelogic-graph-capabilities",
+            description="Fetch graph API capabilities/manifest from the CodeLogic server (GET). "
+                        "Returns label and relationship metadata when the graph tier is deployed; "
+                        "otherwise explains missing routes. Uses CODELOGIC_WORKSPACE_NAME for MV id unless "
+                        "`materialized_view_id` is set.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "materialized_view_id": {
+                        "type": "string",
+                        "description": "Optional materialized view id; default from workspace name",
+                    },
+                },
+                "additionalProperties": False,
+            },
+        ),
+        types.Tool(
+            name="codelogic-graph-search",
+            description="Search the CodeLogic knowledge graph (curated HTTP API). "
+                        "Provide `query` or `identity_prefix`; optional `scan_space`, `materialized_view_id`, `limit`. "
+                        "Requires server route POST .../ai-retrieval/graph/search.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Symbol or text query (alias: q)"},
+                    "q": {"type": "string", "description": "Alias for query"},
+                    "identity_prefix": {"type": "string", "description": "Prefix of stable graph identity"},
+                    "scan_space": {"type": "string", "description": "Optional scan-space / branch filter"},
+                    "materialized_view_id": {"type": "string", "description": "Override MV id; default from workspace name"},
+                    "prefer_latest_scan": {"type": "boolean"},
+                    "limit": {"type": "integer", "description": "Suggested max hits (server may cap)"},
+                },
+            },
+        ),
+        types.Tool(
+            name="codelogic-graph-impact",
+            description="Bounded graph impact from seed node ids (curated HTTP API). "
+                        "Optional `direction` (upstream|downstream|both), `depth`, `scan_space`, `materialized_view_id`.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "seed_node_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Graph node ids to expand from",
+                    },
+                    "direction": {"type": "string", "enum": ["upstream", "downstream", "both"]},
+                    "depth": {"type": "integer"},
+                    "scan_space": {"type": "string"},
+                    "materialized_view_id": {"type": "string"},
+                },
+                "required": ["seed_node_ids"],
+            },
+        ),
+        types.Tool(
+            name="codelogic-graph-path-explain",
+            description="Explain bounded paths between two graph nodes (curated HTTP API). "
+                        "Requires `from_node_id`, `to_node_id`; optional `max_depth`, `scan_space`, `materialized_view_id`.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "from_node_id": {"type": "string"},
+                    "to_node_id": {"type": "string"},
+                    "max_depth": {"type": "integer"},
+                    "scan_space": {"type": "string"},
+                    "materialized_view_id": {"type": "string"},
+                },
+                "required": ["from_node_id", "to_node_id"],
+            },
+        ),
+        types.Tool(
+            name="codelogic-graph-validate-change-scope",
+            description="Validate whether a proposed change scope is safe given seed graph nodes (curated HTTP API).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "seed_node_ids": {"type": "array", "items": {"type": "string"}},
+                    "proposed_change_summary": {"type": "string"},
+                    "scan_space": {"type": "string"},
+                    "materialized_view_id": {"type": "string"},
+                },
+                "required": ["seed_node_ids", "proposed_change_summary"],
+            },
+        ),
+        types.Tool(
+            name="codelogic-graph-owners",
+            description="Look up owners/reviewers for a graph node (curated HTTP API). "
+                        "Provide `node_id` or `identity_prefix`.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "node_id": {"type": "string"},
+                    "identity_prefix": {"type": "string"},
+                    "scan_space": {"type": "string"},
+                    "materialized_view_id": {"type": "string"},
+                },
+            },
+        ),
     ]
 
 
@@ -106,6 +206,8 @@ async def handle_call_tool(
             return await handle_database_impact(arguments)
         elif name == "codelogic-ci":
             return await handle_ci(arguments)
+        elif name in GRAPH_TOOL_DISPATCH:
+            return handle_graph_tool(name, arguments)
         else:
             sys.stderr.write(f"Unknown tool: {name}\n")
             raise ValueError(f"Unknown tool: {name}")

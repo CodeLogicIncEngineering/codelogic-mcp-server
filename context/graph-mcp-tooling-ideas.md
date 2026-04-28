@@ -152,7 +152,7 @@ Optional early win: **`codelogic-graph-classpath-slice`** when `SEARCH` data is 
 
 **Phase 4 — Domain packs:** Java web patterns, SQL evolution, cross-service HTTP—still behind the same API discipline.
 
-**Env (illustrative):** graph service base URL, materialized view / definition hints aligned with existing **`materializedViewId`**-style parameters, request timeouts.
+**Env (illustrative):** same **`CODELOGIC_SERVER_HOST`** as other MCP tools (graph lives under `/codelogic/server/ai-retrieval/graph/…` on that host), materialized view / definition hints aligned with existing **`materializedViewId`**-style parameters, request timeouts.
 
 ## Open questions (working answers)
 
@@ -185,6 +185,36 @@ Search/discovery tools may return **disambiguation groups** (`status=partial`, m
 **A frozen minimal contract** is still useful for **other** reasons: **(1)** **Regression tests** need pinned expectations (fixture JSON sampled from `capabilities` at a known `graph_contract_version`, not “whatever prod returned Tuesday”). **(2)** **Semantics**—which rel types participate in “impact,” default scope rules, disambiguation—are **not** implied by `CALL db.relationshipTypes()`; they belong next to HTTP DTOs or a short doc. **(3)** **Compatibility**—which MCP/server pairs you support—is easier to state against a **versioned manifest** than against an unversioned live DB.
 
 So the “freeze” is **not** a second source of truth competing with discovery; it is **pinned artifacts + documented semantics** for engineering and release discipline. If you prefer, treat the “document” as **checked-in fixture snapshots** derived from `capabilities`, not a hand-maintained duplicate inventory.
+
+## E2E testing (MCP + neo4cape)
+
+### neo4cape (Java, Testcontainers)
+
+- Integration tests live in `neo4cape-service/src/test/java/.../*TestIT.java`, e.g. **`AIGraphMcpControllerTestIT`** (`/ai-retrieval/graph/*`).
+- Parent POM sets **`skipITs` default `true`**, so ITs do **not** run on a normal `mvn test` / `mvn verify` unless you opt in.
+
+```bash
+cd neo4cape
+mvn -pl neo4cape-service verify -DskipITs=false -DskipUTs=true -Dit.test=AIGraphMcpControllerTestIT
+```
+
+- Omit **`-Dit.test=...`** to run **all** `*TestIT` classes in the module (slow).
+
+### codelogic-mcp-server (Python, real host)
+
+- **`test/integration_test_graph.py`** calls **`handle_call_tool`** for the six `codelogic-graph-*` tools against **`CODELOGIC_SERVER_HOST`** (same credentials / workspace as `integration_test_all.py`).
+- If the host returns **404** for graph routes, tests **skip** unless **`CODELOGIC_GRAPH_E2E_REQUIRED=1`** is set (then they **fail**).
+
+```bash
+cd codelogic-mcp-server
+uv run python -m unittest test.integration_test_graph -v
+```
+
+- Load real credentials via **`test/.env.test`** or project **`.env`** (see `load_test_config()` in `test/integration_test_all.py`).
+
+### One-liner script (MCP repo)
+
+- **`scripts/run_graph_e2e.sh`** runs the Python graph E2E module (exits 0 on skip, non-zero on failure when required).
 
 ## Next steps
 
