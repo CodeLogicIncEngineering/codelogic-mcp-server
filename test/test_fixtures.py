@@ -19,6 +19,13 @@ def setup_test_environment(env_vars):
     import codelogic_mcp_server.utils
     importlib.reload(codelogic_mcp_server.utils)
 
+    # Graph MCP client reads CODELOGIC_SERVER_HOST at import/call time via utils.authenticate
+    import codelogic_mcp_server.graph_client
+    importlib.reload(codelogic_mcp_server.graph_client)
+
+    import codelogic_mcp_server.handlers.graph_tools
+    importlib.reload(codelogic_mcp_server.handlers.graph_tools)
+
     # Reinitialize the HTTP client in utils to use the updated environment variables
     codelogic_mcp_server.utils._client = codelogic_mcp_server.utils.httpx.Client(
         timeout=codelogic_mcp_server.utils.httpx.Timeout(

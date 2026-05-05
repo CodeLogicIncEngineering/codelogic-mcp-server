@@ -6,7 +6,7 @@ An [MCP Server](https://modelcontextprotocol.io/introduction) to utilize Codelog
 
 ### Tools
 
-The server implements five tools:
+The server implements **eleven** tools: five original tools plus six **graph** tools backed by the CodeLogic graph HTTP API.
 
 #### Code Analysis Tools
 - **codelogic-method-impact**: Pulls an impact assessment from the CodeLogic server's APIs for your code.
@@ -24,6 +24,19 @@ The server implements five tools:
 - **codelogic-pipeline-helper**: Generates complete CI/CD pipeline configurations for CodeLogic integration.
   - Creates comprehensive pipeline configurations with best practices
   - Includes error handling, notifications, and scan space management strategies
+
+#### Graph API tools
+
+These call `POST` / `GET` endpoints under `/codelogic/server/ai-retrieval/graph/` on the same host as `CODELOGIC_SERVER_HOST`, using the same session auth as other MCP tools. If graph routes are not deployed, the server returns a clear “graph not available” style message (often after HTTP 404).
+
+- **codelogic-graph-capabilities**: `GET` — discover supported relationship types, limits, and flags for the workspace materialized view (`materializedViewId` defaults from `CODELOGIC_WORKSPACE_NAME` like other tools).
+- **codelogic-graph-search**: Search nodes by text `query` / `q` and/or `identity_prefix`; optional `scan_space`, `limit`, etc.
+- **codelogic-graph-impact**: Dependency / blast-radius style traversal from `seed_node_ids`.
+- **codelogic-graph-path-explain**: Shortest-path style explanation between `from_node_id` and `to_node_id`.
+- **codelogic-graph-validate-change-scope**: Heuristic checklist / risk summary for a proposed change given seed nodes and `proposed_change_summary`.
+- **codelogic-graph-owners**: Resolve a node by `node_id` or `identity_prefix` and surface property fields whose names contain `"owner"`.
+
+Tool arguments accept **snake_case** aliases (for example `materialized_view_id`, `seed_node_ids`) where noted in the MCP schema; request bodies sent to CodeLogic use **camelCase** JSON keys.
 
 ### Install
 
@@ -247,6 +260,8 @@ codelogic-pipeline-helper --ci-platform=jenkins --agent-type=dotnet --scan-trigg
 
 To help the AI assistant use the CodeLogic tools effectively, you can add the following instructions/rules to your client's configuration. We recommend customizing these instructions to align with your team's specific coding standards, best practices, and workflow requirements:
 
+When the graph API is available on your CodeLogic host, extend your rules with the same guidance the server already advertises in its MCP `instructions`: use **`codelogic-graph-*`** tools (search, impact, path-explain, validate-change-scope, owners, capabilities) for bounded graph discovery; if graph calls fail with “not available”, fall back to **codelogic-method-impact** / **codelogic-database-impact**.
+
 ### VS Code (GitHub Copilot) Instructions
 
 Create a `.vscode/copilot-instructions.md` file with the following content:
@@ -257,6 +272,7 @@ Create a `.vscode/copilot-instructions.md` file with the following content:
 When modifying existing code methods:
 - Use codelogic-method-impact to analyze code changes
 - Use codelogic-database-impact for database modifications
+- When the CodeLogic graph API is available, use codelogic-graph-* tools (search, impact, path-explain, validate-change-scope, owners, capabilities) for bounded graph discovery; otherwise rely on method/database impact tools
 - Highlight impact results for the modified methods
 
 When modifying SQL code or database entities:
@@ -287,6 +303,7 @@ Create a file `~/.claude/instructions.md` with the following content:
 When modifying existing code methods:
 - Use codelogic-method-impact to analyze code changes
 - Use codelogic-database-impact for database modifications
+- When the CodeLogic graph API is available, use codelogic-graph-* tools (search, impact, path-explain, validate-change-scope, owners, capabilities) for bounded graph discovery; otherwise rely on method/database impact tools
 - Highlight impact results for the modified methods
 
 When modifying SQL code or database entities:
@@ -315,6 +332,7 @@ Create or modify the `~/.codeium/windsurf/memories/global_rules.md` markdown fil
 When modifying existing code methods:
 - Use codelogic-method-impact to analyze code changes
 - Use codelogic-database-impact for database modifications
+- When the CodeLogic graph API is available, use codelogic-graph-* tools (search, impact, path-explain, validate-change-scope, owners, capabilities) for bounded graph discovery; otherwise rely on method/database impact tools
 - Highlight impact results for the modified methods
 
 When modifying SQL code or database entities:
@@ -352,6 +370,7 @@ To configure CodeLogic rules in Cursor:
 - When modifying existing code methods:
   - Use codelogic-method-impact to analyze code changes
   - Use codelogic-database-impact for database modifications
+  - When the CodeLogic graph API is available, use codelogic-graph-* tools (search, impact, path-explain, validate-change-scope, owners, capabilities) for bounded graph discovery; otherwise rely on method/database impact tools
   - Highlight impact results for the modified methods
 - When modifying SQL code or database entities:
   - Always use codelogic-database-impact to analyze potential impacts
@@ -372,6 +391,10 @@ The following environment variables can be configured to customize the behavior 
 - `CODELOGIC_PASSWORD`: Your CodeLogic password.
 - `CODELOGIC_WORKSPACE_NAME`: The name of the workspace to use.
 - `CODELOGIC_DEBUG_MODE`: Set to `true` to enable debug mode. When enabled, additional debug files such as `timing_log.txt` and `impact_data*.json` will be generated. Defaults to `false`.
+
+**Tests only**
+
+- `CODELOGIC_GRAPH_E2E_REQUIRED`: Set to `1` when running graph MCP integration tests if you want missing graph APIs (HTTP 404 / “Graph API not available”) to **fail** the suite instead of **skipping** those tests.
 
 ### Example Configuration
 
@@ -403,6 +426,8 @@ This MCP server has the following version compatibility requirements:
 - Version 0.4.0 and above: Requires CodeLogic API version 25.10.0 or greater
 
 If you're upgrading, make sure your CodeLogic server meets the minimum API version requirement.
+
+**Graph tools**: Require your CodeLogic deployment to serve the graph endpoints under `/codelogic/server/ai-retrieval/graph/`. Older or partial deployments may return 404; the MCP tools surface that as a clear error instead of opaque failures.
 
 ## Debug Logging
 
@@ -447,6 +472,25 @@ python -m unittest discover -s test -p "integration_*.py"
 ```
 
 Note: Integration tests require access to a CodeLogic server instance.
+
+### Graph MCP end-to-end tests
+
+`test/integration_test_graph.py` drives the real MCP handler path (`handle_call_tool`) for **`codelogic-graph-capabilities`** and a chained flow (search → impact → path → validate → owners) against `CODELOGIC_SERVER_HOST`. Configure credentials the same way as other integration tests (`test/.env.test` from `test/.env.test.example`).
+
+- If the host does not expose graph routes, tests **skip** by default.
+- Set **`CODELOGIC_GRAPH_E2E_REQUIRED=1`** to turn missing graph APIs into hard failures (useful in CI when graph must be present).
+
+From the repo root:
+
+```bash
+./scripts/run_graph_e2e.sh
+```
+
+Equivalent:
+
+```bash
+uv run python -m unittest test.integration_test_graph -v
+```
 
 ## Validation for Official MCP Registry
 
