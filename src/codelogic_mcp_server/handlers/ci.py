@@ -14,6 +14,8 @@ from collections import Counter
 from typing import Optional, Dict, List, Tuple
 import mcp.types as types
 
+from .common import SEND_BUILD_INFO_IMAGE, SEND_BUILD_INFO_GITHUB_ACTION
+
 
 def analyze_build_logs(successful_log: Optional[str], failed_log: Optional[str]) -> Dict:
     """
@@ -304,7 +306,7 @@ post {{
                     --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
                     --volume "${{WORKSPACE}}:/scan" \\
                     --volume "${{WORKSPACE}}/logs:/log_file_path" \\
-                    ${{CODELOGIC_HOST}}/codelogic_{{{{agent_type}}}}:latest send_build_info \\
+                    {SEND_BUILD_INFO_IMAGE} send_build_info \\
                     --agent-uuid="${{AGENT_UUID}}" \\
                     --agent-password="${{AGENT_PASSWORD}}" \\
                     --server="${{CODELOGIC_HOST}}" \\
@@ -339,29 +341,22 @@ Add this filtering step before sending build info:
 
 - name: Send Build Info
   if: always()
-  run: |
-    docker run \\
-      --pull always \\
-      --rm \\
-      --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
-      --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
-      --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
-      --volume "${{{{ github.workspace }}}}:/scan" \\
-      --volume "${{{{ github.workspace }}}}/logs:/log_file_path" \\
-      ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{{{{agent_type}}}}:latest send_build_info \\
-      --agent-uuid="${{{{ secrets.AGENT_UUID }}}}" \\
-      --agent-password="${{{{ secrets.AGENT_PASSWORD }}}}" \\
-      --server="${{{{ secrets.CODELOGIC_HOST }}}}" \\
-      --job-name="${{{{ github.repository }}}}" \\
-      --build-number="${{{{ github.run_number }}}}" \\
-      --build-status="${{{{ job.status }}}}" \\
-      --pipeline-system="GitHub Actions" \\
-      --log-file="/log_file_path/build-filtered.log" \\
-      --log-lines=1000 \\
-      --timeout=60 \\
-      --verbose
+  uses: {SEND_BUILD_INFO_GITHUB_ACTION}
+  with:
+    codelogic_host: ${{{{ secrets.CODELOGIC_HOST }}}}
+    agent_uuid: ${{{{ secrets.AGENT_UUID }}}}
+    agent_password: ${{{{ secrets.AGENT_PASSWORD }}}}
+    scan_path: /github/workspace
+    job_name: ${{{{ github.workflow }}}}
+    build_number: ${{{{ github.run_number }}}}
+    build_status: ${{{{ job.status }}}}
+    pipeline_system: GitHub Actions
+    log_file: /github/workspace/logs/build-filtered.log
+    log_lines: 1000
   continue-on-error: true
 ```
+
+> **Note**: Prefer the GitHub Action above. It runs `{SEND_BUILD_INFO_IMAGE}`. Write logs under the workspace (e.g. `logs/`) so they are available at `/github/workspace/...`.
 """
     elif platform == "azure-devops":
         instructions += f"""
@@ -394,7 +389,7 @@ Add this filtering step before sending build info:
       --env AGENT_PASSWORD="$(agentPassword)" \\
       --volume "$(Build.SourcesDirectory):/scan" \\
       --volume "$(Build.SourcesDirectory)/logs:/log_file_path" \\
-      $(codelogicHost)/codelogic_{{{{agent_type}}}}:latest send_build_info \\
+      {SEND_BUILD_INFO_IMAGE} send_build_info \\
       --agent-uuid="$(agentUuid)" \\
       --agent-password="$(agentPassword)" \\
       --server="$(codelogicHost)" \\
@@ -445,7 +440,7 @@ send_build_info:
         --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
         --volume "$CI_PROJECT_DIR:/scan" \\
         --volume "$CI_PROJECT_DIR/logs:/log_file_path" \\
-        $CODELOGIC_HOST/codelogic_{{{{agent_type}}}}:latest send_build_info \\
+        {SEND_BUILD_INFO_IMAGE} send_build_info \\
         --agent-uuid="$AGENT_UUID" \\
         --agent-password="$AGENT_PASSWORD" \\
         --server="$CODELOGIC_HOST" \\
@@ -652,7 +647,7 @@ docker run --rm \\
     --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
     --volume "{scan_path}:/scan" \\
     --volume "${{PWD}}/logs:/log_file_path" \\
-    {server_host}/{agent_image}:latest send_build_info \\
+    {SEND_BUILD_INFO_IMAGE} send_build_info \\
     --log-file="/log_file_path/build.log"
 ```
 """
@@ -795,10 +790,11 @@ docker run --pull always --rm --interactive \\
 - **ALWAYS scan built artifacts, never source code**
 
 ## Send Build Info Command (Separate Operation)
-For sending build information, use the proper `send_build_info` command:
+`send_build_info` runs from the dedicated image `{SEND_BUILD_INFO_IMAGE}` (not agent images).
+For GitHub Actions, prefer `{SEND_BUILD_INFO_GITHUB_ACTION}` instead of `docker run`.
 
 ```bash
-# Standardized send_build_info command
+# Standardized send_build_info command (Jenkins / Azure / GitLab / generic)
 docker run \\
     --pull always \\
     --rm \\
@@ -807,7 +803,7 @@ docker run \\
     --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
     --volume "${{WORKSPACE}}:/scan" \\
     --volume "${{WORKSPACE}}/logs:/log_file_path" \\
-    ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
+    {SEND_BUILD_INFO_IMAGE} send_build_info \\
     --agent-uuid="${{AGENT_UUID}}" \\
     --agent-password="${{AGENT_PASSWORD}}" \\
     --server="${{CODELOGIC_HOST}}" \\
@@ -1021,7 +1017,7 @@ post {{
                             --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
                             --volume "${{WORKSPACE}}:/scan" \\
                             --volume "${{WORKSPACE}}/logs:/log_file_path" \\
-                            ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
+                            {SEND_BUILD_INFO_IMAGE} send_build_info \\
                             --agent-uuid="${{AGENT_UUID}}" \\
                             --agent-password="${{AGENT_PASSWORD}}" \\
                             --server="${{CODELOGIC_HOST}}" \\
@@ -1090,13 +1086,10 @@ jobs:
           --expunge-scan-sessions
       continue-on-error: true
       
-    - name: Send Build Info
+    - name: Capture build log
       if: always()
       run: |
-        # Create logs directory
         mkdir -p logs
-        
-        # Capture build information
         echo "Build completed at: $(date)" > logs/build.log
         echo "Repository: ${{{{ github.repository }}}}" >> logs/build.log
         echo "Workflow: ${{{{ github.workflow }}}}" >> logs/build.log
@@ -1104,28 +1097,21 @@ jobs:
         echo "Commit: ${{{{ github.sha }}}}" >> logs/build.log
         echo "Branch: ${{{{ github.ref_name }}}}" >> logs/build.log
         echo "Build Status: ${{{{ job.status }}}}" >> logs/build.log
-        
-        # Send build info with proper command syntax
-        docker run \\
-          --pull always \\
-          --rm \\
-          --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
-          --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
-          --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
-          --volume "${{{{ github.workspace }}}}:/scan" \\
-          --volume "${{{{ github.workspace }}}}/logs:/log_file_path" \\
-          ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest send_build_info \\
-          --agent-uuid="${{{{ secrets.AGENT_UUID }}}}" \\
-          --agent-password="${{{{ secrets.AGENT_PASSWORD }}}}" \\
-          --server="${{{{ secrets.CODELOGIC_HOST }}}}" \\
-          --job-name="${{{{ github.repository }}}}" \\
-          --build-number="${{{{ github.run_number }}}}" \\
-          --build-status="${{{{ job.status }}}}" \\
-          --pipeline-system="GitHub Actions" \\
-          --log-file="/log_file_path/build.log" \\
-          --log-lines=1000 \\
-          --timeout=60 \\
-          --verbose
+
+    - name: Send Build Info
+      if: always()
+      uses: {SEND_BUILD_INFO_GITHUB_ACTION}
+      with:
+        codelogic_host: ${{{{ secrets.CODELOGIC_HOST }}}}
+        agent_uuid: ${{{{ secrets.AGENT_UUID }}}}
+        agent_password: ${{{{ secrets.AGENT_PASSWORD }}}}
+        scan_path: /github/workspace
+        job_name: ${{{{ github.workflow }}}}
+        build_number: ${{{{ github.run_number }}}}
+        build_status: ${{{{ job.status }}}}
+        pipeline_system: GitHub Actions
+        log_file: /github/workspace/logs/build.log
+        log_lines: 1000
       continue-on-error: true"""
                 }
             ]
@@ -1185,7 +1171,7 @@ stages:
           --env AGENT_PASSWORD="$(agentPassword)" \\
           --volume "$(Build.SourcesDirectory):/scan" \\
           --volume "$(Build.SourcesDirectory)/logs:/log_file_path" \\
-          $(codelogicHost)/codelogic_{agent_type}:latest send_build_info \\
+          {SEND_BUILD_INFO_IMAGE} send_build_info \\
           --agent-uuid="$(agentUuid)" \\
           --agent-password="$(agentPassword)" \\
           --server="$(codelogicHost)" \\
@@ -1275,7 +1261,7 @@ send_build_info:
         --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
         --volume "$CI_PROJECT_DIR:/scan" \\
         --volume "$CI_PROJECT_DIR/logs:/log_file_path" \\
-        $CODELOGIC_HOST/codelogic_{agent_type}:latest send_build_info \\
+        {SEND_BUILD_INFO_IMAGE} send_build_info \\
         --agent-uuid="$AGENT_UUID" \\
         --agent-password="$AGENT_PASSWORD" \\
         --server="$CODELOGIC_HOST" \\
@@ -1528,6 +1514,7 @@ Add this to the `environment` block in your Jenkinsfile:
 environment {{
     CODELOGIC_HOST = '{server_host}'
     CODELOGIC_IMAGE = '${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest'
+    SEND_BUILD_INFO_IMAGE = '{SEND_BUILD_INFO_IMAGE}'
     AGENT_UUID = credentials('codelogic-agent-uuid')
     AGENT_PASSWORD = credentials('codelogic-agent-password')
 }}
@@ -1816,7 +1803,7 @@ stage('CodeLogic Build Info Collection') {{
                     --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
                     --volume "${{WORKSPACE}}:/scan" \\
                     --volume "${{WORKSPACE}}/logs:/log_file_path" \\
-                    ${{CODELOGIC_IMAGE}} send_build_info \\
+                    {SEND_BUILD_INFO_IMAGE} send_build_info \\
                     --agent-uuid="${{AGENT_UUID}}" \\
                     --agent-password="${{AGENT_PASSWORD}}" \\
                     --server="${{CODELOGIC_HOST}}" \\
@@ -2011,7 +1998,7 @@ pipeline {{
                         --env AGENT_UUID="${{AGENT_UUID}}" \\
                         --env AGENT_PASSWORD="${{AGENT_PASSWORD}}" \\
                         --volume "${{WORKSPACE}}/logs:/log_file_path" \\
-                        ${{CODELOGIC_HOST}}/codelogic_{agent_type}:latest send_build_info \\
+                        {SEND_BUILD_INFO_IMAGE} send_build_info \\
                         --log-file="/log_file_path/build.log"
                 '''
             }}
@@ -2102,27 +2089,18 @@ jobs:
       
     - name: Send Build Info
       if: always()
-      run: |
-        docker run \\
-          --pull always \\
-          --rm \\
-          --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
-          --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
-          --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
-          --volume "${{{{ github.workspace }}}}:/scan" \\
-          --volume "${{{{ github.workspace }}}}/logs:/log_file_path" \\
-          ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest send_build_info \\
-          --agent-uuid="${{{{ secrets.AGENT_UUID }}}}" \\
-          --agent-password="${{{{ secrets.AGENT_PASSWORD }}}}" \\
-          --server="${{{{ secrets.CODELOGIC_HOST }}}}" \\
-          --job-name="${{{{ github.repository }}}}" \\
-          --build-number="${{{{ github.run_number }}}}" \\
-          --build-status="${{{{ job.status }}}}" \\
-          --pipeline-system="GitHub Actions" \\
-          --log-file="/log_file_path/build.log" \\
-          --log-lines=1000 \\
-          --timeout=60 \\
-          --verbose
+      uses: {SEND_BUILD_INFO_GITHUB_ACTION}
+      with:
+        codelogic_host: ${{{{ secrets.CODELOGIC_HOST }}}}
+        agent_uuid: ${{{{ secrets.AGENT_UUID }}}}
+        agent_password: ${{{{ secrets.AGENT_PASSWORD }}}}
+        scan_path: /github/workspace
+        job_name: ${{{{ github.workflow }}}}
+        build_number: ${{{{ github.run_number }}}}
+        build_status: ${{{{ job.status }}}}
+        pipeline_system: GitHub Actions
+        log_file: /github/workspace/logs/build.log
+        log_lines: 1000
       continue-on-error: true
       
     - name: Upload build logs
@@ -2236,28 +2214,19 @@ jobs:
       continue-on-error: true
       
     - name: Send Build Info
-      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-      run: |
-        docker run \\
-          --pull always \\
-          --rm \\
-          --env CODELOGIC_HOST="${{{{ secrets.CODELOGIC_HOST }}}}" \\
-          --env AGENT_UUID="${{{{ secrets.AGENT_UUID }}}}" \\
-          --env AGENT_PASSWORD="${{{{ secrets.AGENT_PASSWORD }}}}" \\
-          --volume "${{{{ github.workspace }}}}:/scan" \\
-          --volume "${{{{ github.workspace }}}}/logs:/log_file_path" \\
-          ${{{{ secrets.CODELOGIC_HOST }}}}/codelogic_{agent_type}:latest send_build_info \\
-          --agent-uuid="${{{{ secrets.AGENT_UUID }}}}" \\
-          --agent-password="${{{{ secrets.AGENT_PASSWORD }}}}" \\
-          --server="${{{{ secrets.CODELOGIC_HOST }}}}" \\
-          --job-name="${{{{ github.repository }}}}" \\
-          --build-number="${{{{ github.run_number }}}}" \\
-          --build-status="${{{{ job.status }}}}" \\
-          --pipeline-system="GitHub Actions" \\
-          --log-file="/log_file_path/build.log" \\
-          --log-lines=1000 \\
-          --timeout=60 \\
-          --verbose
+      if: always()
+      uses: {SEND_BUILD_INFO_GITHUB_ACTION}
+      with:
+        codelogic_host: ${{{{ secrets.CODELOGIC_HOST }}}}
+        agent_uuid: ${{{{ secrets.AGENT_UUID }}}}
+        agent_password: ${{{{ secrets.AGENT_PASSWORD }}}}
+        scan_path: /github/workspace
+        job_name: ${{{{ github.workflow }}}}
+        build_number: ${{{{ github.run_number }}}}
+        build_status: ${{{{ job.status }}}}
+        pipeline_system: GitHub Actions
+        log_file: /github/workspace/logs/build.log
+        log_lines: 1000
       continue-on-error: true
       
     - name: Upload build logs
@@ -2335,7 +2304,7 @@ stages:
           --env AGENT_PASSWORD="$(agentPassword)" \\
           --volume "$(Build.SourcesDirectory):/scan" \\
           --volume "$(Build.SourcesDirectory)/logs:/log_file_path" \\
-          $(codelogicHost)/codelogic_{agent_type}:latest send_build_info \\
+          {SEND_BUILD_INFO_IMAGE} send_build_info \\
           --agent-uuid="$(agentUuid)" \\
           --agent-password="$(agentPassword)" \\
           --server="$(codelogicHost)" \\
@@ -2433,7 +2402,7 @@ send_build_info:
         --env AGENT_PASSWORD="$AGENT_PASSWORD" \\
         --volume "$CI_PROJECT_DIR:/scan" \\
         --volume "$CI_PROJECT_DIR/logs:/log_file_path" \\
-        $CODELOGIC_HOST/codelogic_{agent_type}:latest send_build_info \\
+        {SEND_BUILD_INFO_IMAGE} send_build_info \\
         --agent-uuid="$AGENT_UUID" \\
         --agent-password="$AGENT_PASSWORD" \\
         --server="$CODELOGIC_HOST" \\

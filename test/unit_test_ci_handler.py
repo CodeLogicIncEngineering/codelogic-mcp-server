@@ -25,7 +25,15 @@ from codelogic_mcp_server.handlers.ci import (
     analyze_build_logs,
     generate_log_filter_script,
     generate_log_filtering_instructions,
+    generate_docker_agent_config,
+    generate_github_actions_config,
     handle_ci as _handle_ci_async,
+)
+from codelogic_mcp_server.handlers.common import (
+    SEND_BUILD_INFO_IMAGE,
+    SEND_BUILD_INFO_GITHUB_ACTION,
+    generate_send_build_info_command,
+    generate_github_actions_send_build_info_step,
 )
 
 
@@ -333,6 +341,9 @@ class TestGenerateLogFilteringInstructions(TestCase):
         self.assertIsInstance(result, str)
         self.assertIn("GitHub Actions", result)
         self.assertIn("Filter build logs", result)
+        self.assertIn(SEND_BUILD_INFO_GITHUB_ACTION, result)
+        self.assertIn(SEND_BUILD_INFO_IMAGE, result)
+        self.assertNotIn("codelogic_java:latest send_build_info", result)
 
     def test_generate_log_filtering_instructions_azure_devops(self):
         """Test instructions for Azure DevOps"""
@@ -470,6 +481,53 @@ Build failed
         self.assertIn("Log Filtering Configuration", result[0].text)
         # Should analyze both logs
         self.assertIn("Total lines analyzed", result[0].text)
+
+
+class TestSendBuildInfoImageLocation(TestCase):
+    """send_build_info must use dedicated ECR image / GitHub Action (CAPE-8850)."""
+
+    def test_common_command_uses_dedicated_image(self):
+        cmd = generate_send_build_info_command("java", "https://example.com", "jenkins")
+        self.assertIn(SEND_BUILD_INFO_IMAGE, cmd)
+        self.assertNotIn("codelogic_java", cmd)
+        self.assertNotIn("https://example.com/codelogic_", cmd)
+
+    def test_github_actions_helper_uses_action(self):
+        step = generate_github_actions_send_build_info_step(
+            "/github/workspace/logs/build.log"
+        )
+        self.assertIn(SEND_BUILD_INFO_GITHUB_ACTION, step)
+        self.assertIn("log_file: /github/workspace/logs/build.log", step)
+        self.assertNotIn("docker run", step)
+
+    def test_docker_agent_config_uses_dedicated_image(self):
+        cfg = generate_docker_agent_config(
+            "java", "/tmp/app", "App", "jenkins", "https://example.com"
+        )
+        self.assertIn(SEND_BUILD_INFO_IMAGE, cfg)
+        self.assertNotIn("codelogic_java:latest send_build_info", cfg)
+
+    def test_github_actions_config_uses_action(self):
+        cfg = generate_github_actions_config(
+            "dotnet", "/tmp", "App", "https://example.com"
+        )
+        self.assertIn(SEND_BUILD_INFO_GITHUB_ACTION, cfg)
+        self.assertNotIn("codelogic_dotnet:latest send_build_info", cfg)
+
+    @patch.dict(os.environ, {"CODELOGIC_SERVER_HOST": "https://test.codelogic.com"})
+    def test_handle_ci_output_uses_new_send_build_info_location(self):
+        result = handle_ci(
+            {
+                "agent_type": "java",
+                "scan_path": "/path/to/scan",
+                "application_name": "TestApp",
+                "ci_platform": "github-actions",
+            }
+        )
+        text = result[0].text
+        self.assertIn(SEND_BUILD_INFO_IMAGE, text)
+        self.assertIn(SEND_BUILD_INFO_GITHUB_ACTION, text)
+        self.assertNotIn("codelogic_java:latest send_build_info", text)
 
 
 if __name__ == '__main__':
